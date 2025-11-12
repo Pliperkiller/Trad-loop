@@ -142,8 +142,8 @@ class MainWindow:
             self.exchange_combo.current(0)
             self._on_exchange_changed()
 
-        self.log_widget.info("Aplicacion iniciada correctamente")
-        self.log_widget.info(f"Exchanges disponibles: {', '.join(exchanges)}")
+        self.log_widget.log_info("Aplicacion iniciada correctamente")
+        self.log_widget.log_info(f"Exchanges disponibles: {', '.join(exchanges)}")
 
     def _on_exchange_changed(self, event=None):
         """Callback cuando se cambia el exchange seleccionado."""
@@ -163,7 +163,7 @@ class MainWindow:
         if timeframe_values:
             self.timeframe_combo.current(2)
 
-        self.log_widget.info(f"Exchange cambiado a: {exchange_name}")
+        self.log_widget.log_info(f"Exchange cambiado a: {exchange_name}")
 
     def _browse_output_path(self):
         """Abre un dialogo para seleccionar la ruta de salida."""
@@ -186,7 +186,7 @@ class MainWindow:
     def _clear_logs(self):
         """Limpia el widget de logs."""
         self.log_widget.clear_logs()
-        self.log_widget.info("Logs limpiados")
+        self.log_widget.log_info("Logs limpiados")
 
     def _start_extraction(self):
         """Inicia el proceso de extraccion en un hilo separado."""
@@ -201,8 +201,8 @@ class MainWindow:
         self.extract_button.config(state='disabled')
         self.cancel_button.config(state='normal')
 
-        self.log_widget.info("=" * 60)
-        self.log_widget.info("Iniciando extraccion de datos...")
+        self.log_widget.log_info("=" * 60)
+        self.log_widget.log_info("Iniciando extraccion de datos...")
 
         thread = threading.Thread(target=self._run_extraction, daemon=True)
         thread.start()
@@ -237,15 +237,15 @@ class MainWindow:
             )
 
             if success:
-                self.log_widget.success(message)
+                self.log_widget.log_success(message)
                 self.root.after(0, lambda: messagebox.showinfo("Exito", message))
             else:
-                self.log_widget.error(message)
+                self.log_widget.log_error(message)
                 self.root.after(0, lambda: messagebox.showerror("Error", message))
 
         except Exception as e:
             error_msg = f"Error inesperado: {str(e)}"
-            self.log_widget.error(error_msg)
+            self.log_widget.log_error(error_msg)
             self.root.after(0, lambda: messagebox.showerror("Error", error_msg))
 
         finally:
@@ -276,12 +276,12 @@ class MainWindow:
 
     def _progress_callback(self, current: int, total: int, message: str):
         """Callback para actualizar el progreso."""
-        self.root.after(0, lambda: self.log_widget.info(f"Progreso {current}/{total}: {message}"))
+        self.root.after(0, lambda: self.log_widget.log_info(f"Progreso {current}/{total}: {message}"))
 
     def _cancel_extraction(self):
         """Cancela la extraccion en progreso."""
         if messagebox.askyesno("Confirmar", "Esta seguro de cancelar la extraccion?"):
-            self.log_widget.warning("Cancelacion solicitada (no implementada completamente)")
+            self.log_widget.log_warning("Cancelacion solicitada (no implementada completamente)")
 
     def run(self):
         """Inicia el loop principal de la aplicacion."""

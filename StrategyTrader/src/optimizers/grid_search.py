@@ -1,0 +1,105 @@
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import itertools
+import numpy as np
+import pandas as pd
+
+from .optimization_types import OptimizationResult
+
+
+def grid_search(self, verbose: bool = True) -> OptimizationResult:
+    """
+    Grid Search: Prueba todas las combinaciones posibles
+    
+    Pros:
+    - Garantiza encontrar el óptimo global en el espacio discretizado
+    - Fácil de entender y reproducible
+    
+    Contras:
+    - Computacionalmente muy costoso
+    - Crece exponencialmente con el número de parámetros
+    - No funciona bien con espacios continuos grandes
+    
+    Mejor para: 2-3 parámetros con rangos pequeños
+    """
+    import time
+    start_time = time.time()
+    
+    if verbose:
+        print("\n" + "="*70)
+        print("INICIANDO GRID SEARCH")
+        print("="*70)
+    
+    # Generar grid de parámetros
+    param_grids = []
+    param_names = []
+    
+    for param in self.parameter_space:
+        param_names.append(param.name)
+        
+        if param.param_type == 'int':
+            step = param.step if param.step else 1
+            values = list(range(int(param.low), int(param.high) + 1, int(step)))
+        elif param.param_type == 'float':
+            step = param.step if param.step else (param.high - param.low) / 10
+            values = list(np.arange(param.low, param.high + step, step))
+        else:  # categorical
+            values = param.values
+        
+        param_grids.append(values)
+    
+    # Generar todas las combinaciones
+    all_combinations = list(itertools.product(*param_grids))
+    total_combinations = len(all_combinations)
+    
+    if verbose:
+        print(f"Total de combinaciones a evaluar: {total_combinations}")
+        print(f"Parametros: {param_names}\n")
+    
+    # Evaluar todas las combinaciones
+    results = []
+    
+    if self.n_jobs and self.n_jobs != 1:
+        # Evaluación paralela
+        with ProcessPoolExecutor(max_workers=self.n_jobs) as executor:
+            futures = {}
+            for combo in all_combinations:
+                params = dict(zip(param_names, combo))
+                future = executor.submit(self._evaluate_parameters_detailed, params)
+                futures[future] = params
+            
+            completed = 0
+            for future in as_completed(futures):
+                result = future.result()
+                results.append(result)
+                completed += 1
+                
+                if verbose and completed % max(1, total_combinations // 20) == 0:
+                    print(f"Progreso: {completed}/{total_combinations} ({completed/total_combinations*100:.1f}%)")
+    else:
+        # Evaluación secuencial
+        for i, combo in enumerate(all_combinations):
+            params = dict(zip(param_names, combo))
+            result = self._evaluate_parameters_detailed(params)
+            results.append(result)
+            
+            if verbose and (i + 1) % max(1, total_combinations // 20) == 0:
+                print(f"Progreso: {i+1}/{total_combinations} ({(i+1)/total_combinations*100:.1f}%)")
+    
+    # Procesar resultados
+    results_df = pd.DataFrame(results)
+    best_idx = results_df['score'].idxmax()
+    best_result = results_df.iloc[best_idx]
+    
+    best_params = {name: best_result[name] for name in param_names}
+    best_score = best_result['score']
+    
+    optimization_time = time.time() - start_time
+    
+    return OptimizationResult(
+        best_params=best_params,
+        best_score=best_score,
+        all_results=results_df,
+        optimization_time=optimization_time,
+        method='Grid Search',
+        iterations=total_combinations
+    )

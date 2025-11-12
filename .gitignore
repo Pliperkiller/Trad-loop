@@ -1,0 +1,6 @@
+*.csv
+.env
+/venv
+*.ipynb
+.venv
+.claude

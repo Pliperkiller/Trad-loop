@@ -54,18 +54,18 @@ class LogWidget(scrolledtext.ScrolledText):
         self.delete('1.0', tk.END)
         self.config(state='disabled')
 
-    def info(self, message: str):
+    def log_info(self, message: str):
         """Agrega un mensaje de nivel INFO."""
         self.add_log(message, "INFO")
 
-    def warning(self, message: str):
+    def log_warning(self, message: str):
         """Agrega un mensaje de nivel WARNING."""
         self.add_log(message, "WARNING")
 
-    def error(self, message: str):
+    def log_error(self, message: str):
         """Agrega un mensaje de nivel ERROR."""
         self.add_log(message, "ERROR")
 
-    def success(self, message: str):
+    def log_success(self, message: str):
         """Agrega un mensaje de nivel SUCCESS."""
         self.add_log(message, "SUCCESS")

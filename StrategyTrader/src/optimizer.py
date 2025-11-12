@@ -27,54 +27,20 @@ PARA IMPLEMENTAR ESTE MÓDULO:
 Ver conversación donde desarrollamos este código completo
 """
 
+
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Tuple, Callable, Any, Optional
-from dataclasses import dataclass
+from typing import Dict, List, Tuple, Callable
 import itertools
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import warnings
 warnings.filterwarnings('ignore')
 
-try:
-    from skopt import gp_minimize
-    from skopt.space import Real, Integer
-    from skopt.utils import use_named_args
-    SKOPT_AVAILABLE = True
-except ImportError:
-    SKOPT_AVAILABLE = False
-
-from scipy.optimize import differential_evolution
-
-
-@dataclass
-class ParameterSpace:
-    """Define el espacio de búsqueda para un parámetro"""
-    name: str
-    param_type: str  # 'int', 'float', 'categorical'
-    low: Optional[float] = None
-    high: Optional[float] = None
-    values: Optional[List[Any]] = None
-    step: Optional[float] = None
-
-
-@dataclass
-class OptimizationResult:
-    """Resultado de la optimización"""
-    best_params: Dict[str, Any]
-    best_score: float
-    all_results: pd.DataFrame
-    optimization_time: float
-    method: str
-    iterations: int
-    
-    def print_summary(self):
-        """Imprime resumen - IMPLEMENTAR"""
-        print(f"\nMétodo: {self.method}")
-        print(f"Mejor Score: {self.best_score:.4f}")
-        print(f"Mejores Parámetros: {self.best_params}")
-        print(f"Iteraciones: {self.iterations}")
-        print(f"Tiempo: {self.optimization_time:.2f}s")
+from .optimizers.optimization_types import ParameterSpace, OptimizationResult
+from .optimizers.grid_search import grid_search
+from .optimizers.random_search import random_search
+from .optimizers.bayesian import bayesian_optimization
+from .optimizers.genetic import genetic_algorithm
 
 
 class StrategyOptimizer:
@@ -109,32 +75,85 @@ class StrategyOptimizer:
         self.results_cache: Dict = {}
     
     def add_parameter(self, name: str, param_type: str, **kwargs):
-        """Añade parámetro al espacio de búsqueda"""
+        """
+        Añade un parámetro al espacio de búsqueda
+        
+        Args:
+            name: Nombre del parámetro
+            param_type: Tipo ('int', 'float', 'categorical')
+            **kwargs: low, high, step, values según el tipo
+        """
         param = ParameterSpace(name=name, param_type=param_type, **kwargs)
         self.parameter_space.append(param)
+
+    def _evaluate_parameters(self, params: Dict) -> float:
+        """
+        Evalúa un conjunto de parámetros y retorna el score
+        """
+        # Crear hash para cache
+        params_tuple = tuple(sorted(params.items()))
+        if params_tuple in self.results_cache:
+            return self.results_cache[params_tuple]
+        
+        try:
+            # Crear instancia de estrategia con parámetros
+            strategy = self.strategy_class(self.config_template, **params)
+            
+            # Ejecutar backtest
+            strategy.load_data(self.data)
+            strategy.backtest()
+            
+            # Obtener métricas
+            metrics = strategy.get_performance_metrics()
+            
+            # Obtener score de la métrica objetivo
+            score = metrics.get(self.objective_metric, -np.inf)
+            
+            # Validaciones adicionales
+            if metrics.get('total_trades', 0) < 10:
+                score = -np.inf  # Penalizar estrategias con muy pocos trades
+            
+            # Cachear resultado
+            self.results_cache[params_tuple] = score
+            
+            return score
+            
+        except Exception as e:
+            print(f"Error evaluando parametros {params}: {str(e)}")
+            return -np.inf
+    
+    def _evaluate_parameters_detailed(self, params: Dict) -> Dict:
+        """Evalúa parámetros y retorna todas las métricas"""
+        try:
+            strategy = self.strategy_class(self.config_template, **params)
+            strategy.load_data(self.data)
+            strategy.backtest()
+            metrics = strategy.get_performance_metrics()
+            
+            result = {'score': metrics.get(self.objective_metric, -np.inf)}
+            result.update(params)
+            result.update(metrics)
+            
+            return result
+        except Exception as e:
+            result = {'score': -np.inf}
+            result.update(params)
+            return result
     
     def grid_search(self, verbose: bool = True):
-        """Grid Search - IMPLEMENTAR CÓDIGO COMPLETO"""
-        print("NOTA: Implementar grid_search completo")
-        print("Ver conversación donde desarrollamos este método")
-        return None
-    
+        return grid_search(self, verbose=verbose)
+
+
     def random_search(self, n_iter: int = 100, verbose: bool = True):
-        """Random Search - IMPLEMENTAR CÓDIGO COMPLETO"""
-        print("NOTA: Implementar random_search completo")
-        return None
-    
+        return random_search(self, n_iter, verbose)
+
+
     def bayesian_optimization(self, n_calls: int = 50, verbose: bool = True):
-        """Bayesian Optimization - IMPLEMENTAR CÓDIGO COMPLETO"""
-        print("NOTA: Implementar bayesian_optimization completo")
-        print("Requiere: pip install scikit-optimize")
-        return None
-    
-    def genetic_algorithm(self, population_size: int = 20, 
+        return bayesian_optimization(self, n_calls, verbose)
+
+    def genetic_algorithm(self, population_size: int = 20,
                          max_generations: int = 50, verbose: bool = True):
-        """Genetic Algorithm - IMPLEMENTAR CÓDIGO COMPLETO"""
-        print("NOTA: Implementar genetic_algorithm completo")
-        return None
+        return genetic_algorithm(self, population_size, max_generations, verbose)
     
     def walk_forward_optimization(self, optimization_method: str = 'bayesian',
                                  n_splits: int = 5, train_size: float = 0.6):
