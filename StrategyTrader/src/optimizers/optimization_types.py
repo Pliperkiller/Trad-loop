@@ -48,6 +48,12 @@ class WalkForwardResult:
     n_splits: int
     train_size: float
     optimization_method: str
+    # Additional attributes for validation integration
+    best_params: Optional[Dict[str, Any]] = None  # Best params across all splits
+    consistency_ratio: float = 0.0  # Ratio of positive OOS splits
+    avg_is_score: float = 0.0  # Average in-sample score
+    avg_oos_score: float = 0.0  # Average out-of-sample score
+    parameter_stability: Optional[Dict[str, Any]] = None  # Parameter stability analysis
 
     def print_summary(self):
         """Imprime resumen del Walk Forward"""

@@ -309,6 +309,22 @@ def walk_forward_optimization(
                 print("Todos los parametros son estables")
         print("="*70)
 
+    # Calculate additional metrics for validation integration
+    valid_splits = [s for s in splits_results if s.get('oos_score', -np.inf) > -np.inf]
+    avg_is = float(np.mean([s['train_score'] for s in valid_splits])) if valid_splits else 0.0
+    avg_oos = aggregated_metrics.get('avg_oos_score', 0.0)
+    consistency = aggregated_metrics.get('positive_oos_ratio', 0.0)
+
+    # Get best params (from most recent successful split)
+    best_params = None
+    for s in reversed(splits_results):
+        if 'best_params' in s and s.get('oos_score', -np.inf) > -np.inf:
+            best_params = s['best_params']
+            break
+
+    # Get parameter stability from aggregated metrics if available
+    param_stability = aggregated_metrics.get('parameter_stability', None)
+
     return WalkForwardResult(
         splits_results=splits_results,
         aggregated_metrics=aggregated_metrics,
@@ -317,7 +333,12 @@ def walk_forward_optimization(
         optimization_time=optimization_time,
         n_splits=n_splits,
         train_size=train_size,
-        optimization_method=optimization_method
+        optimization_method=optimization_method,
+        best_params=best_params,
+        consistency_ratio=consistency,
+        avg_is_score=avg_is,
+        avg_oos_score=avg_oos,
+        parameter_stability=param_stability,
     )
 
 
