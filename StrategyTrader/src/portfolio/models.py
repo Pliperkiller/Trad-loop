@@ -460,6 +460,151 @@ class PortfolioMetrics:
 
 
 @dataclass
+class PortfolioSplitResult:
+    """Result of a single walk-forward split for portfolio."""
+
+    split_idx: int
+    train_start: datetime
+    train_end: datetime
+    test_start: datetime
+    test_end: datetime
+    train_rows: int
+    test_rows: int
+
+    # Weights optimized in train period
+    optimized_weights: Dict[str, float] = field(default_factory=dict)
+
+    # Metrics
+    train_metrics: PortfolioMetrics = field(default_factory=PortfolioMetrics)
+    test_metrics: PortfolioMetrics = field(default_factory=PortfolioMetrics)
+
+    # Performance comparison
+    train_sharpe: float = 0.0
+    test_sharpe: float = 0.0
+    train_return: float = 0.0
+    test_return: float = 0.0
+    degradation_pct: float = 0.0
+
+    # Equity curves for this split
+    train_equity: List[float] = field(default_factory=list)
+    test_equity: List[float] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "split_idx": self.split_idx,
+            "train_start": self.train_start.isoformat(),
+            "train_end": self.train_end.isoformat(),
+            "test_start": self.test_start.isoformat(),
+            "test_end": self.test_end.isoformat(),
+            "train_rows": self.train_rows,
+            "test_rows": self.test_rows,
+            "optimized_weights": self.optimized_weights,
+            "train_metrics": self.train_metrics.to_dict(),
+            "test_metrics": self.test_metrics.to_dict(),
+            "train_sharpe": self.train_sharpe,
+            "test_sharpe": self.test_sharpe,
+            "train_return": self.train_return,
+            "test_return": self.test_return,
+            "degradation_pct": self.degradation_pct,
+        }
+
+
+@dataclass
+class PortfolioWalkForwardResult:
+    """Complete walk-forward analysis result for portfolio."""
+
+    config: PortfolioConfig = field(default_factory=PortfolioConfig)
+    n_splits: int = 0
+    anchored: bool = True
+
+    # Per-split results
+    splits: List[PortfolioSplitResult] = field(default_factory=list)
+
+    # Aggregated metrics
+    avg_train_sharpe: float = 0.0
+    avg_test_sharpe: float = 0.0
+    avg_train_return: float = 0.0
+    avg_test_return: float = 0.0
+    avg_degradation: float = 0.0
+
+    # Robustness
+    robustness_score: float = 0.0
+    positive_oos_ratio: float = 0.0
+    consistency_ratio: float = 0.0
+
+    # Combined OOS equity (concatenated test periods)
+    combined_oos_equity: List[float] = field(default_factory=list)
+    combined_oos_returns: List[float] = field(default_factory=list)
+    combined_oos_timestamps: List[datetime] = field(default_factory=list)
+
+    # Final metrics on combined OOS
+    combined_oos_metrics: PortfolioMetrics = field(default_factory=PortfolioMetrics)
+
+    # Weight stability across splits
+    weight_stability: Dict[str, float] = field(default_factory=dict)
+    unstable_allocations: List[str] = field(default_factory=list)
+
+    # Metadata
+    execution_time: float = 0.0
+
+    def to_dict(self) -> dict:
+        return {
+            "config": self.config.to_dict(),
+            "n_splits": self.n_splits,
+            "anchored": self.anchored,
+            "splits": [s.to_dict() for s in self.splits],
+            "avg_train_sharpe": self.avg_train_sharpe,
+            "avg_test_sharpe": self.avg_test_sharpe,
+            "avg_train_return": self.avg_train_return,
+            "avg_test_return": self.avg_test_return,
+            "avg_degradation": self.avg_degradation,
+            "robustness_score": self.robustness_score,
+            "positive_oos_ratio": self.positive_oos_ratio,
+            "consistency_ratio": self.consistency_ratio,
+            "combined_oos_equity": self.combined_oos_equity,
+            "combined_oos_returns": self.combined_oos_returns,
+            "combined_oos_timestamps": [
+                t.isoformat() for t in self.combined_oos_timestamps
+            ],
+            "combined_oos_metrics": self.combined_oos_metrics.to_dict(),
+            "weight_stability": self.weight_stability,
+            "unstable_allocations": self.unstable_allocations,
+            "execution_time": self.execution_time,
+        }
+
+    def print_summary(self) -> None:
+        """Print a formatted summary of results."""
+        print("\n" + "=" * 60)
+        print("PORTFOLIO WALK-FORWARD ANALYSIS RESULTS")
+        print("=" * 60)
+        print(f"\nSplits: {self.n_splits} | Mode: {'Anchored' if self.anchored else 'Rolling'}")
+        print(f"Robustness Score: {self.robustness_score:.2f}")
+        print(f"Positive OOS Ratio: {self.positive_oos_ratio:.1%}")
+        print(f"Consistency Ratio: {self.consistency_ratio:.1%}")
+        print("\n" + "-" * 60)
+        print("AVERAGE METRICS:")
+        print(f"  Train Sharpe: {self.avg_train_sharpe:.3f}")
+        print(f"  Test Sharpe:  {self.avg_test_sharpe:.3f}")
+        print(f"  Degradation:  {self.avg_degradation:.1%}")
+        print("\n" + "-" * 60)
+        print("COMBINED OOS PERFORMANCE:")
+        print(f"  Total Return: {self.combined_oos_metrics.total_return_pct:.2f}%")
+        print(f"  Sharpe Ratio: {self.combined_oos_metrics.sharpe_ratio:.3f}")
+        print(f"  Max Drawdown: {self.combined_oos_metrics.max_drawdown:.1%}")
+        print("\n" + "-" * 60)
+        print("PER-SPLIT RESULTS:")
+        for split in self.splits:
+            print(f"  Split {split.split_idx + 1}: "
+                  f"Train SR={split.train_sharpe:.2f}, "
+                  f"Test SR={split.test_sharpe:.2f}, "
+                  f"Deg={split.degradation_pct:.1%}")
+        if self.unstable_allocations:
+            print("\n" + "-" * 60)
+            print(f"WARNING: Unstable allocations: {self.unstable_allocations}")
+        print("=" * 60 + "\n")
+
+
+@dataclass
 class PortfolioResult:
     """Resultado completo del backtest de portfolio"""
     config: PortfolioConfig = field(default_factory=PortfolioConfig)

@@ -293,3 +293,234 @@ class TestBacktesterEdgeCases:
 
         assert result is not None
         assert len(result.weight_history) == 2
+
+
+class TestWalkForwardBacktest:
+    """Tests for walk-forward backtesting"""
+
+    @pytest.fixture
+    def large_ohlcv_data(self, symbols):
+        """Large OHLCV data for walk-forward tests"""
+        np.random.seed(42)
+        n_periods = 1000  # Enough for multiple splits
+
+        data = {}
+        dates = pd.date_range(start="2024-01-01", periods=n_periods, freq="1h")
+
+        base_prices = {
+            "BTC/USDT": 50000.0,
+            "ETH/USDT": 3000.0,
+            "SOL/USDT": 100.0,
+            "LINK/USDT": 15.0,
+        }
+
+        for symbol in symbols:
+            base = base_prices.get(symbol, 100.0)
+            returns = np.random.normal(0.0001, 0.02, n_periods)
+            prices = base * np.exp(np.cumsum(returns))
+
+            df = pd.DataFrame({
+                "open": prices * (1 + np.random.uniform(-0.005, 0.005, n_periods)),
+                "high": prices * (1 + np.random.uniform(0, 0.02, n_periods)),
+                "low": prices * (1 - np.random.uniform(0, 0.02, n_periods)),
+                "close": prices,
+                "volume": np.random.uniform(1000, 10000, n_periods),
+            }, index=dates)
+
+            data[symbol] = df
+
+        return data
+
+    def test_walk_forward_basic(self, default_config, large_ohlcv_data):
+        """Test basic walk-forward backtest"""
+        backtester = PortfolioBacktester(default_config)
+        backtester.load_data(large_ohlcv_data)
+
+        result = backtester.walk_forward_backtest(
+            n_splits=3,
+            train_pct=0.6,
+            anchored=True,
+        )
+
+        assert result is not None
+        assert len(result.splits) == 3
+        assert result.robustness_score >= 0
+        assert result.robustness_score <= 1
+
+    def test_walk_forward_anchored(self, default_config, large_ohlcv_data):
+        """Test anchored (expanding) walk-forward"""
+        backtester = PortfolioBacktester(default_config)
+        backtester.load_data(large_ohlcv_data)
+
+        result = backtester.walk_forward_backtest(
+            n_splits=3,
+            train_pct=0.5,
+            anchored=True,
+        )
+
+        assert result.anchored is True
+
+        # In anchored mode, training size should increase
+        train_sizes = [s.train_rows for s in result.splits]
+        for i in range(1, len(train_sizes)):
+            assert train_sizes[i] > train_sizes[i-1]
+
+    def test_walk_forward_rolling(self, default_config, large_ohlcv_data):
+        """Test rolling (fixed window) walk-forward"""
+        backtester = PortfolioBacktester(default_config)
+        backtester.load_data(large_ohlcv_data)
+
+        result = backtester.walk_forward_backtest(
+            n_splits=3,
+            train_pct=0.5,
+            anchored=False,
+        )
+
+        assert result.anchored is False
+
+        # In rolling mode, training size should be approximately constant
+        train_sizes = [s.train_rows for s in result.splits]
+        # Allow some tolerance
+        assert max(train_sizes) - min(train_sizes) <= 50
+
+    def test_walk_forward_split_structure(self, default_config, large_ohlcv_data):
+        """Test that split results have correct structure"""
+        backtester = PortfolioBacktester(default_config)
+        backtester.load_data(large_ohlcv_data)
+
+        result = backtester.walk_forward_backtest(n_splits=3)
+
+        for split in result.splits:
+            assert split.train_start < split.train_end
+            assert split.test_start < split.test_end
+            assert split.train_end <= split.test_start
+            assert split.train_rows > 0
+            assert split.test_rows > 0
+            assert len(split.optimized_weights) > 0
+
+    def test_walk_forward_metrics(self, default_config, large_ohlcv_data):
+        """Test that metrics are calculated"""
+        backtester = PortfolioBacktester(default_config)
+        backtester.load_data(large_ohlcv_data)
+
+        result = backtester.walk_forward_backtest(n_splits=3)
+
+        # Aggregated metrics
+        assert isinstance(result.avg_train_sharpe, float)
+        assert isinstance(result.avg_test_sharpe, float)
+        assert isinstance(result.avg_degradation, float)
+
+        # Ratios
+        assert 0 <= result.positive_oos_ratio <= 1
+        assert 0 <= result.consistency_ratio <= 1
+
+    def test_walk_forward_combined_oos(self, default_config, large_ohlcv_data):
+        """Test combined OOS equity curve"""
+        backtester = PortfolioBacktester(default_config)
+        backtester.load_data(large_ohlcv_data)
+
+        result = backtester.walk_forward_backtest(n_splits=3)
+
+        # Combined OOS should exist
+        assert len(result.combined_oos_equity) > 0
+        assert len(result.combined_oos_returns) > 0
+
+        # Should have metrics
+        assert result.combined_oos_metrics.total_days > 0
+
+    def test_walk_forward_weight_stability(self, default_config, large_ohlcv_data):
+        """Test weight stability analysis"""
+        backtester = PortfolioBacktester(default_config)
+        backtester.load_data(large_ohlcv_data)
+
+        result = backtester.walk_forward_backtest(
+            n_splits=3,
+            stability_threshold=0.3,
+        )
+
+        # Stability analysis should exist
+        assert isinstance(result.weight_stability, dict)
+        assert isinstance(result.unstable_allocations, list)
+
+    def test_walk_forward_with_gap(self, default_config, large_ohlcv_data):
+        """Test walk-forward with gap between train and test"""
+        backtester = PortfolioBacktester(default_config)
+        backtester.load_data(large_ohlcv_data)
+
+        result = backtester.walk_forward_backtest(
+            n_splits=3,
+            gap=10,
+        )
+
+        # Should complete without error
+        assert len(result.splits) == 3
+
+    def test_walk_forward_different_allocations(self, symbols, large_ohlcv_data):
+        """Test walk-forward with different allocation methods"""
+        for method in [AllocationMethod.EQUAL_WEIGHT, AllocationMethod.RISK_PARITY]:
+            config = PortfolioConfig(
+                initial_capital=10000,
+                symbols=symbols,
+                allocation_method=method,
+                rebalance_frequency=RebalanceFrequency.MONTHLY,
+            )
+
+            backtester = PortfolioBacktester(config)
+            backtester.load_data(large_ohlcv_data)
+
+            result = backtester.walk_forward_backtest(n_splits=2)
+
+            assert result is not None
+            assert len(result.splits) == 2
+
+    def test_walk_forward_no_data_error(self, default_config):
+        """Test error when no data loaded"""
+        backtester = PortfolioBacktester(default_config)
+
+        with pytest.raises(ValueError):
+            backtester.walk_forward_backtest(n_splits=3)
+
+    def test_walk_forward_result_to_dict(self, default_config, large_ohlcv_data):
+        """Test result serialization"""
+        backtester = PortfolioBacktester(default_config)
+        backtester.load_data(large_ohlcv_data)
+
+        result = backtester.walk_forward_backtest(n_splits=2)
+        result_dict = result.to_dict()
+
+        assert "n_splits" in result_dict
+        assert "splits" in result_dict
+        assert "robustness_score" in result_dict
+        assert len(result_dict["splits"]) == 2
+
+    def test_walk_forward_split_to_dict(self, default_config, large_ohlcv_data):
+        """Test split result serialization"""
+        backtester = PortfolioBacktester(default_config)
+        backtester.load_data(large_ohlcv_data)
+
+        result = backtester.walk_forward_backtest(n_splits=2)
+        split_dict = result.splits[0].to_dict()
+
+        assert "split_idx" in split_dict
+        assert "train_sharpe" in split_dict
+        assert "test_sharpe" in split_dict
+        assert "degradation_pct" in split_dict
+        assert "optimized_weights" in split_dict
+
+    def test_walk_forward_robustness_score_bounds(self, default_config, large_ohlcv_data):
+        """Test that robustness score is bounded"""
+        backtester = PortfolioBacktester(default_config)
+        backtester.load_data(large_ohlcv_data)
+
+        result = backtester.walk_forward_backtest(n_splits=3)
+
+        assert 0 <= result.robustness_score <= 1
+
+    def test_walk_forward_execution_time_tracked(self, default_config, large_ohlcv_data):
+        """Test that execution time is tracked"""
+        backtester = PortfolioBacktester(default_config)
+        backtester.load_data(large_ohlcv_data)
+
+        result = backtester.walk_forward_backtest(n_splits=2)
+
+        assert result.execution_time > 0

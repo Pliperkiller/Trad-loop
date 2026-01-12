@@ -21,6 +21,8 @@ from .models import (
     RebalanceEvent,
     PortfolioMetrics,
     PortfolioResult,
+    PortfolioSplitResult,
+    PortfolioWalkForwardResult,
 )
 from .allocator import PortfolioAllocator, AllocationResult, PortfolioAllocatorFactory
 from .rebalancer import PortfolioRebalancer, RebalanceDecision, RebalancerFactory
@@ -43,6 +45,8 @@ __all__ = [
     "RebalanceEvent",
     "PortfolioMetrics",
     "PortfolioResult",
+    "PortfolioSplitResult",
+    "PortfolioWalkForwardResult",
     # Allocator
     "PortfolioAllocator",
     "AllocationResult",
