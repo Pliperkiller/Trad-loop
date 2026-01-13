@@ -110,14 +110,22 @@ class StrategyOptimizer:
         """
         Evalúa un conjunto de parámetros y retorna el score
         """
+        from .strategy import StrategyConfig
+
         # Crear hash para cache
         params_tuple = tuple(sorted(params.items()))
         if params_tuple in self.results_cache:
             return self.results_cache[params_tuple]
-        
+
         try:
+            # Crear config object desde dict si es necesario
+            if isinstance(self.config_template, dict):
+                config = StrategyConfig(**self.config_template)
+            else:
+                config = self.config_template
+
             # Crear instancia de estrategia con parámetros
-            strategy = self.strategy_class(self.config_template, **params)
+            strategy = self.strategy_class(config, **params)
             
             # Ejecutar backtest
             strategy.load_data(self.data)
@@ -144,8 +152,16 @@ class StrategyOptimizer:
     
     def _evaluate_parameters_detailed(self, params: Dict) -> Dict:
         """Evalúa parámetros y retorna todas las métricas"""
+        from .strategy import StrategyConfig
+
         try:
-            strategy = self.strategy_class(self.config_template, **params)
+            # Crear config object desde dict si es necesario
+            if isinstance(self.config_template, dict):
+                config = StrategyConfig(**self.config_template)
+            else:
+                config = self.config_template
+
+            strategy = self.strategy_class(config, **params)
             strategy.load_data(self.data)
             strategy.backtest()
             metrics = strategy.get_performance_metrics()

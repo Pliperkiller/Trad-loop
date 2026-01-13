@@ -183,6 +183,7 @@ class TradingStrategy(ABC):
             'entry_price': position.entry_price,
             'exit_price': exit_price,
             'quantity': position.quantity,
+            'position_type': position.position_type,
             'pnl': net_pnl,
             'return_pct': (net_pnl / (position.entry_price * position.quantity)) * 100,
             'reason': reason

@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import time
 from skopt import gp_minimize
 from skopt.space import Real, Integer
@@ -51,15 +52,40 @@ def bayesian_optimization(self, n_calls: int = 50, n_initial_points: int = 10,
             space.append(Integer(0, len(param.values) - 1, name=param.name))
     
     # Función objetivo para skopt
+    # Valor de penalizacion razonable para metricas financieras (Sharpe ~[-3, 3])
+    LARGE_PENALTY = 10.0  # Penalizacion moderada, skopt no acepta inf ni valores muy grandes
+
+    def safe_score(raw_score) -> float:
+        """Convierte score a float seguro para skopt (sin inf/nan, rango limitado)"""
+        try:
+            # Convertir a float de Python (maneja numpy types, Series, etc)
+            score = float(raw_score)
+        except (TypeError, ValueError):
+            return LARGE_PENALTY
+
+        # Verificar si es finito (cubre nan e inf)
+        import math
+        if not math.isfinite(score):
+            return LARGE_PENALTY
+
+        # Clampear a rango razonable usando Python puro
+        clamped = max(-10.0, min(10.0, score))
+        return -clamped  # Skopt minimiza, nosotros maximizamos
+
     @use_named_args(space)
     def objective(**params):
         # Convertir categorical indices a valores
         for param in self.parameter_space:
             if param.param_type == 'categorical':
                 params[param.name] = param.values[params[param.name]]
-        
-        score = self._evaluate_parameters(params)
-        return -score  # Skopt minimiza, nosotros maximizamos
+
+        try:
+            score = self._evaluate_parameters(params)
+            return safe_score(score)
+        except Exception as e:
+            if verbose:
+                print(f"Error evaluando params {params}: {e}")
+            return LARGE_PENALTY
     
     # Ejecutar optimización
     result = gp_minimize(
@@ -71,15 +97,21 @@ def bayesian_optimization(self, n_calls: int = 50, n_initial_points: int = 10,
         verbose=verbose
     )
     
-    # Procesar resultados
+    # Procesar resultados - convertir numpy types a Python nativos
+    def to_python_type(val):
+        """Convierte numpy types a Python nativos para serialización JSON"""
+        if hasattr(val, 'item'):  # numpy scalar
+            return val.item()
+        return val
+
     best_params = {}
     for i, param in enumerate(self.parameter_space):
         if param.param_type == 'categorical':
             best_params[param.name] = param.values[result.x[i]]
         else:
-            best_params[param.name] = result.x[i]
-    
-    best_score = -result.fun
+            best_params[param.name] = to_python_type(result.x[i])
+
+    best_score = to_python_type(-result.fun)
     
     # Crear DataFrame con historial
     results_data = []
@@ -89,8 +121,8 @@ def bayesian_optimization(self, n_calls: int = 50, n_initial_points: int = 10,
             if param.param_type == 'categorical':
                 params_dict[param.name] = param.values[x_vals[i]]
             else:
-                params_dict[param.name] = x_vals[i]
-        params_dict['score'] = -y_val
+                params_dict[param.name] = to_python_type(x_vals[i])
+        params_dict['score'] = to_python_type(-y_val)
         results_data.append(params_dict)
     
     results_df = pd.DataFrame(results_data)

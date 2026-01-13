@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from typing import Tuple
 import warnings
 warnings.filterwarnings('ignore')
@@ -56,22 +57,34 @@ def genetic_algorithm(self, population_size: int = 20, max_generations: int = 50
         iteration_results = []
         
         def objective(x):
+            # Verificar si hay NaN en los valores
+            if np.any(np.isnan(x)):
+                return float('inf')  # Retornar peor score posible
+
             params = {}
-            for i, (param, value) in enumerate(zip(self.parameter_space, x)):
-                if param.param_type == 'categorical':
-                    params[param.name] = categorical_params[param.name][int(round(value))]
-                elif param.param_type == 'int':
-                    params[param.name] = int(round(value))
-                else:
-                    params[param.name] = value
-            
+            try:
+                for i, (param, value) in enumerate(zip(self.parameter_space, x)):
+                    if param.param_type == 'categorical':
+                        idx = int(np.clip(round(value), 0, len(categorical_params[param.name]) - 1))
+                        params[param.name] = categorical_params[param.name][idx]
+                    elif param.param_type == 'int':
+                        params[param.name] = int(np.clip(round(value), param.low, param.high))
+                    else:
+                        params[param.name] = float(np.clip(value, param.low, param.high))
+            except (ValueError, OverflowError):
+                return float('inf')  # Retornar peor score si hay error de conversión
+
             score = self._evaluate_parameters(params)
-            
+
+            # Verificar si el score es válido
+            if np.isnan(score) or np.isinf(score):
+                return float('inf')
+
             # Guardar resultado
             result_dict = params.copy()
             result_dict['score'] = score
             iteration_results.append(result_dict)
-            
+
             return -score  # Scipy minimiza
         
         # Ejecutar optimización

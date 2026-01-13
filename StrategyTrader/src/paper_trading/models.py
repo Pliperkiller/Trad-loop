@@ -8,11 +8,16 @@ Define las estructuras de datos fundamentales:
 - RealtimeCandle: Vela con datos en tiempo real
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, TYPE_CHECKING
 import uuid
+
+if TYPE_CHECKING:
+    from .orders.base import AdvancedOrderParams
 
 
 class OrderType(Enum):
@@ -82,6 +87,7 @@ class Order:
     filled_price: float = 0.0
     commission: float = 0.0
     client_order_id: Optional[str] = None
+    advanced_params: Optional[AdvancedOrderParams] = None
 
     def is_active(self) -> bool:
         """Verifica si la orden esta activa"""
@@ -101,7 +107,7 @@ class Order:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convierte la orden a diccionario"""
-        return {
+        result = {
             "id": self.id,
             "symbol": self.symbol,
             "side": self.side.value,
@@ -116,6 +122,9 @@ class Order:
             "filled_price": self.filled_price,
             "commission": self.commission,
         }
+        if self.advanced_params:
+            result["advanced_params"] = self.advanced_params.to_dict()
+        return result
 
 
 @dataclass

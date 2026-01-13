@@ -70,9 +70,12 @@ def grid_search(self, verbose: bool = True) -> OptimizationResult:
             completed = 0
             for future in as_completed(futures):
                 result = future.result()
+                # Verificar si el score es valido
+                if result.get('score') is None or np.isnan(result['score']) or np.isinf(result['score']):
+                    result['score'] = -1e10
                 results.append(result)
                 completed += 1
-                
+
                 if verbose and completed % max(1, total_combinations // 20) == 0:
                     print(f"Progreso: {completed}/{total_combinations} ({completed/total_combinations*100:.1f}%)")
     else:
@@ -80,8 +83,11 @@ def grid_search(self, verbose: bool = True) -> OptimizationResult:
         for i, combo in enumerate(all_combinations):
             params = dict(zip(param_names, combo))
             result = self._evaluate_parameters_detailed(params)
+            # Verificar si el score es valido
+            if result.get('score') is None or np.isnan(result['score']) or np.isinf(result['score']):
+                result['score'] = -1e10
             results.append(result)
-            
+
             if verbose and (i + 1) % max(1, total_combinations // 20) == 0:
                 print(f"Progreso: {i+1}/{total_combinations} ({(i+1)/total_combinations*100:.1f}%)")
     

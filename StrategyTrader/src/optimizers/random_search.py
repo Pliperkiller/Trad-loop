@@ -43,10 +43,19 @@ def random_search(self, n_iter: int = 100, verbose: bool = True) -> Optimization
         
         # Evaluar
         result = self._evaluate_parameters_detailed(params)
+
+        # Verificar si el score es valido
+        if result.get('score') is None or np.isnan(result['score']) or np.isinf(result['score']):
+            result['score'] = -1e10  # Penalizacion para scores invalidos
+
         results.append(result)
-        
+
+        # Calcular mejor score valido para mostrar progreso
+        valid_scores = [r['score'] for r in results if not np.isnan(r['score']) and not np.isinf(r['score'])]
+        best_so_far = max(valid_scores) if valid_scores else 0
+
         if verbose and (i + 1) % max(1, n_iter // 20) == 0:
-            print(f"Progreso: {i+1}/{n_iter} ({(i+1)/n_iter*100:.1f}%) - Best score: {max([r['score'] for r in results]):.4f}")
+            print(f"Progreso: {i+1}/{n_iter} ({(i+1)/n_iter*100:.1f}%) - Best score: {best_so_far:.4f}")
     
     # Procesar resultados
     results_df = pd.DataFrame(results)
