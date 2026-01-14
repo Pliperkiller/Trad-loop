@@ -5,6 +5,8 @@ Proporciona acceso a 100+ exchanges de criptomonedas
 a traves de la libreria CCXT.
 """
 
+import os
+import logging
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
@@ -14,6 +16,8 @@ try:
 except ImportError:
     ccxt = None
     CCXT_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
 
 from ...core.enums import (
     BrokerType, OrderType, OrderSide, OrderStatus, PositionSide
@@ -42,8 +46,8 @@ class CCXTBroker(IBrokerAdapter):
     def __init__(
         self,
         exchange_id: str,
-        api_key: str,
-        api_secret: str,
+        api_key: Optional[str] = None,
+        api_secret: Optional[str] = None,
         password: Optional[str] = None,
         testnet: bool = False,
         **kwargs
@@ -51,10 +55,15 @@ class CCXTBroker(IBrokerAdapter):
         """
         Inicializar adaptador CCXT.
 
+        Las credenciales se pueden proporcionar directamente o via variables de entorno:
+        - {EXCHANGE_ID}_API_KEY (ej: BINANCE_API_KEY)
+        - {EXCHANGE_ID}_API_SECRET (ej: BINANCE_API_SECRET)
+        - {EXCHANGE_ID}_PASSWORD (ej: OKX_PASSWORD)
+
         Args:
             exchange_id: ID del exchange (ej: 'binance', 'bybit', 'okx')
-            api_key: API key del exchange
-            api_secret: API secret del exchange
+            api_key: API key del exchange (opcional si se usa env var)
+            api_secret: API secret del exchange (opcional si se usa env var)
             password: Passphrase (requerido por algunos exchanges como OKX)
             testnet: Usar testnet/sandbox si esta disponible
             **kwargs: Parametros adicionales para CCXT
@@ -70,16 +79,39 @@ class CCXTBroker(IBrokerAdapter):
         self._exchange: Optional[ccxt.Exchange] = None
         self._connected = False
 
-        # Configuracion
+        # Resolver credenciales desde env vars si no se proporcionan
+        env_prefix = self._exchange_id.upper()
+        resolved_api_key = api_key or os.environ.get(f"{env_prefix}_API_KEY")
+        resolved_api_secret = api_secret or os.environ.get(f"{env_prefix}_API_SECRET")
+        resolved_password = password or os.environ.get(f"{env_prefix}_PASSWORD")
+
+        # Validar credenciales
+        if not resolved_api_key or not resolved_api_secret:
+            raise ValueError(
+                f"API credentials required for {exchange_id}. "
+                f"Provide api_key/api_secret or set {env_prefix}_API_KEY "
+                f"and {env_prefix}_API_SECRET environment variables."
+            )
+
+        # Advertir si las credenciales se pasan directamente (menos seguro)
+        if api_key or api_secret:
+            logger.warning(
+                f"API credentials for {exchange_id} passed directly. "
+                f"Consider using environment variables ({env_prefix}_API_KEY, "
+                f"{env_prefix}_API_SECRET) for better security."
+            )
+
+        # Configuracion - NO almacenar credenciales en texto plano en el objeto
+        # Solo pasarlas al exchange cuando se conecta
         self._config = {
-            "apiKey": api_key,
-            "secret": api_secret,
+            "apiKey": resolved_api_key,
+            "secret": resolved_api_secret,
             "enableRateLimit": True,
             **kwargs
         }
 
-        if password:
-            self._config["password"] = password
+        if resolved_password:
+            self._config["password"] = resolved_password
 
         if testnet:
             self._config["sandbox"] = True
@@ -87,6 +119,12 @@ class CCXTBroker(IBrokerAdapter):
         # Mapper y capacidades
         self._mapper = CCXTOrderMapper(self._exchange_id)
         self._capabilities = get_exchange_capabilities(self._exchange_id)
+
+        # Registrar que se inicializó (sin revelar credenciales)
+        logger.info(
+            f"CCXTBroker initialized for {exchange_id} "
+            f"(testnet={testnet}, credentials={'env' if not api_key else 'direct'})"
+        )
 
     @property
     def broker_type(self) -> BrokerType:

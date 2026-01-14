@@ -10,6 +10,7 @@ from src.indicators.base import (
     validate_ohlcv,
     ParabolicSARResult,
     SupertrendResult,
+    LinearRegressionResult,
 )
 
 
@@ -84,7 +85,14 @@ def vwma(
     sum_pv = price_volume.rolling(window=period).sum()
     sum_v = volume.rolling(window=period).sum()
 
-    return sum_pv / sum_v
+    # Protección contra división por cero cuando el volumen total es cero
+    # Convertir a Series si es necesario y reemplazar ceros con NaN
+    if isinstance(sum_v, pd.Series):
+        sum_v_safe = sum_v.replace(0, np.nan)
+    else:
+        sum_v_safe = pd.Series(sum_v).replace(0, np.nan)
+
+    return sum_pv / sum_v_safe
 
 
 def parabolic_sar(
@@ -276,3 +284,120 @@ def supertrend(
     direction_series = pd.Series(direction, index=close.index)
 
     return SupertrendResult(supertrend=supertrend_series, direction=direction_series)
+
+
+def linear_regression(
+    close: Union[pd.Series, np.ndarray, list],
+    open_: Union[pd.Series, np.ndarray, list],
+    period: int = 20
+) -> LinearRegressionResult:
+    """
+    Calculate Linear Regression over a rolling window.
+
+    Fits a linear regression line to the last N candles and returns
+    the slope, intercept, R², normalized slope values, and residual metrics.
+
+    Args:
+        close: Close prices (used for regression calculation)
+        open_: Open prices (used for slope_normalized_3)
+        period: Number of periods for regression window (default 20)
+
+    Returns:
+        LinearRegressionResult with:
+        - slope: Regression line slope
+        - slope_normalized_1: slope / average price of window
+        - slope_normalized_2: slope / close price of last candle
+        - slope_normalized_3: slope / open price of first candle in window
+        - intercept: Regression line intercept
+        - r_squared: Coefficient of determination (R²)
+        - residual: actual price - predicted price at current point
+        - residual_std: standard deviation of residuals in window
+        - residual_zscore: residual / residual_std (clamped to avoid inf)
+    """
+    close = validate_series(close, "close")
+    open_ = validate_series(open_, "open_")
+    period = validate_period(period, min_val=2, name="period")
+
+    if len(close) != len(open_):
+        raise ValueError("close and open_ must have the same length")
+
+    n = len(close)
+
+    # Initialize result arrays
+    slope_arr = np.full(n, np.nan)
+    slope_norm1_arr = np.full(n, np.nan)
+    slope_norm2_arr = np.full(n, np.nan)
+    slope_norm3_arr = np.full(n, np.nan)
+    intercept_arr = np.full(n, np.nan)
+    r_squared_arr = np.full(n, np.nan)
+    residual_arr = np.full(n, np.nan)
+    residual_std_arr = np.full(n, np.nan)
+    residual_zscore_arr = np.full(n, np.nan)
+
+    # X values for regression (0, 1, 2, ..., period-1)
+    x = np.arange(period)
+
+    for i in range(period - 1, n):
+        # Get window of close prices
+        y = close.iloc[i - period + 1:i + 1].values
+
+        # Calculate linear regression using polyfit
+        coeffs = np.polyfit(x, y, 1)
+        slope = coeffs[0]
+        intercept = coeffs[1]
+
+        # Calculate predicted values for all points in window
+        y_pred = slope * x + intercept
+
+        # Calculate R² (coefficient of determination)
+        ss_res = np.sum((y - y_pred) ** 2)
+        ss_tot = np.sum((y - np.mean(y)) ** 2)
+        r_squared = 1 - (ss_res / ss_tot) if ss_tot != 0 else 1.0
+
+        # Calculate residual metrics
+        # Predicted price at current point (last point in window)
+        predicted_current = intercept + slope * (period - 1)
+        # Residual: actual - predicted
+        residual = close.iloc[i] - predicted_current
+        # Standard deviation of all residuals in window
+        all_residuals = y - y_pred
+        residual_std = np.std(all_residuals, ddof=0)
+        # Z-score with protection against division by zero
+        if residual_std > 1e-10:
+            residual_zscore = residual / residual_std
+        else:
+            # If std is ~0, prices are perfectly linear, zscore is 0
+            residual_zscore = 0.0
+
+        # Calculate normalized slopes
+        avg_price = np.mean(y)
+        close_price = close.iloc[i]
+        open_price_window = open_.iloc[i - period + 1]
+
+        slope_norm1 = slope / avg_price if avg_price != 0 else 0.0
+        slope_norm2 = slope / close_price if close_price != 0 else 0.0
+        slope_norm3 = slope / open_price_window if open_price_window != 0 else 0.0
+
+        # Store results
+        slope_arr[i] = slope
+        slope_norm1_arr[i] = slope_norm1
+        slope_norm2_arr[i] = slope_norm2
+        slope_norm3_arr[i] = slope_norm3
+        intercept_arr[i] = intercept
+        r_squared_arr[i] = r_squared
+        residual_arr[i] = residual
+        residual_std_arr[i] = residual_std
+        residual_zscore_arr[i] = residual_zscore
+
+    # Convert to pandas Series with original index
+    return LinearRegressionResult(
+        slope=pd.Series(slope_arr, index=close.index),
+        slope_normalized_1=pd.Series(slope_norm1_arr, index=close.index),
+        slope_normalized_2=pd.Series(slope_norm2_arr, index=close.index),
+        slope_normalized_3=pd.Series(slope_norm3_arr, index=close.index),
+        intercept=pd.Series(intercept_arr, index=close.index),
+        r_squared=pd.Series(r_squared_arr, index=close.index),
+        residual=pd.Series(residual_arr, index=close.index),
+        residual_std=pd.Series(residual_std_arr, index=close.index),
+        residual_zscore=pd.Series(residual_zscore_arr, index=close.index),
+    )

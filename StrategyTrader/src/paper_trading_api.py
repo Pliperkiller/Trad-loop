@@ -110,10 +110,14 @@ class PaperTradingSessionManager:
             {
                 "id": "ma_crossover",
                 "name": "Moving Average Crossover",
-                "description": "Estrategia basada en cruce de medias moviles",
+                "description": "Estrategia basada en cruce de medias moviles con filtro RSI",
                 "parameters": [
-                    {"name": "fast_period", "type": "int", "default": 10, "min": 2, "max": 50},
-                    {"name": "slow_period", "type": "int", "default": 30, "min": 10, "max": 200},
+                    {"name": "fast_period", "type": "int", "default": 10, "min_value": 5, "max_value": 50, "step": 1, "description": "Periodo de la EMA rapida"},
+                    {"name": "slow_period", "type": "int", "default": 30, "min_value": 20, "max_value": 200, "step": 5, "description": "Periodo de la EMA lenta"},
+                    {"name": "rsi_period", "type": "int", "default": 14, "min_value": 5, "max_value": 50, "step": 1, "description": "Periodo del RSI"},
+                    {"name": "rsi_lower_bound", "type": "int", "default": 30, "min_value": 10, "max_value": 50, "step": 5, "description": "Limite inferior RSI para BUY"},
+                    {"name": "rsi_upper_bound", "type": "int", "default": 70, "min_value": 50, "max_value": 90, "step": 5, "description": "Limite superior RSI para BUY"},
+                    {"name": "rsi_sell_threshold", "type": "int", "default": 80, "min_value": 70, "max_value": 95, "step": 5, "description": "Umbral RSI para SELL forzado"},
                 ]
             }
         ]

@@ -8,7 +8,7 @@ de paper trading: feed de datos, estrategias, ordenes y posiciones.
 import asyncio
 import logging
 from datetime import datetime
-from typing import Optional, Callable, Dict, Any, Type
+from typing import Optional, Callable, Dict, Any, Type, List
 from abc import ABC, abstractmethod
 
 from .models import (
@@ -219,10 +219,17 @@ class PaperTradingEngine:
         self._task: Optional[asyncio.Task] = None
         self.current_symbol: str = ""
 
+        # Circuit breaker para errores de estrategia
+        self._strategy_error_count: int = 0
+        self._max_strategy_errors: int = 10  # Pausa después de 10 errores consecutivos
+        self._strategy_errors_window: List[float] = []  # Timestamps de errores recientes
+        self._error_window_seconds: float = 60.0  # Ventana de tiempo para contar errores
+
         # Callbacks
         self.on_trade: Optional[Callable[[TradeRecord], None]] = None
         self.on_candle: Optional[Callable[[RealtimeCandle], None]] = None
         self.on_state_update: Optional[Callable[[PaperTradingState], None]] = None
+        self.on_strategy_error: Optional[Callable[[Exception, str], None]] = None
 
         # Configurar callbacks internos
         self._setup_callbacks()
@@ -386,10 +393,66 @@ class PaperTradingEngine:
 
         # Procesar con estrategia (solo velas cerradas por defecto)
         if self._strategy and candle.is_closed:
-            try:
-                self._strategy.on_candle(candle)
-            except Exception as e:
-                logger.error(f"Error en estrategia: {e}")
+            self._execute_strategy_safely(candle)
+
+    def _execute_strategy_safely(self, candle: RealtimeCandle):
+        """
+        Ejecuta la estrategia con manejo robusto de errores.
+
+        Implementa un circuit breaker que pausa el engine si hay
+        demasiados errores en un período de tiempo.
+        """
+        try:
+            self._strategy.on_candle(candle)
+            # Reset del contador si la ejecución fue exitosa
+            self._strategy_error_count = 0
+        except Exception as e:
+            import traceback
+            error_traceback = traceback.format_exc()
+
+            # Registrar el error
+            current_time = datetime.now().timestamp()
+            self._strategy_errors_window.append(current_time)
+            self._strategy_error_count += 1
+
+            # Limpiar errores fuera de la ventana de tiempo
+            cutoff_time = current_time - self._error_window_seconds
+            self._strategy_errors_window = [
+                t for t in self._strategy_errors_window if t > cutoff_time
+            ]
+
+            # Logging detallado
+            logger.error(
+                f"Error en estrategia '{self._strategy.name}' "
+                f"(error {self._strategy_error_count}/{self._max_strategy_errors}): {e}"
+            )
+            logger.debug(f"Traceback completo:\n{error_traceback}")
+
+            # Notificar vía callback
+            if self.on_strategy_error:
+                try:
+                    self.on_strategy_error(e, error_traceback)
+                except Exception as callback_error:
+                    logger.warning(f"Error en callback on_strategy_error: {callback_error}")
+
+            # Circuit breaker: pausar si hay demasiados errores
+            errors_in_window = len(self._strategy_errors_window)
+            if errors_in_window >= self._max_strategy_errors:
+                logger.critical(
+                    f"Circuit breaker activado: {errors_in_window} errores en "
+                    f"{self._error_window_seconds}s. Pausando paper trading."
+                )
+                self.pause()
+
+                # Notificar el circuit breaker
+                if self.on_strategy_error:
+                    circuit_breaker_error = RuntimeError(
+                        f"Circuit breaker: {errors_in_window} errores consecutivos"
+                    )
+                    try:
+                        self.on_strategy_error(circuit_breaker_error, "")
+                    except Exception:
+                        pass
 
     def _update_state(self, candle: RealtimeCandle):
         """Actualiza el estado interno"""
@@ -502,42 +565,104 @@ class PaperTradingEngine:
 # Estrategia de ejemplo simple
 class SimpleMovingAverageStrategy(RealtimeStrategy):
     """
-    Estrategia simple de cruce de medias moviles.
+    Estrategia de cruce de medias moviles con filtro RSI.
 
-    Compra cuando EMA rapida cruza por encima de EMA lenta.
-    Vende cuando EMA rapida cruza por debajo de EMA lenta.
+    Compra cuando EMA rapida cruza por encima de EMA lenta Y RSI esta en zona neutral.
+    Vende cuando EMA rapida cruza por debajo de EMA lenta O RSI esta sobrecomprado.
     """
 
     def __init__(
         self,
         engine: PaperTradingEngine,
         fast_period: int = 10,
-        slow_period: int = 30
+        slow_period: int = 30,
+        rsi_period: int = 14,
+        rsi_lower_bound: int = 30,
+        rsi_upper_bound: int = 70,
+        rsi_sell_threshold: int = 80
     ):
         super().__init__(engine)
         self.fast_period = fast_period
         self.slow_period = slow_period
+        self.rsi_period = rsi_period
+        self.rsi_lower_bound = rsi_lower_bound
+        self.rsi_upper_bound = rsi_upper_bound
+        self.rsi_sell_threshold = rsi_sell_threshold
         self._prices: list = []
         self._prev_fast_ema: Optional[float] = None
         self._prev_slow_ema: Optional[float] = None
 
-    def _calculate_ema(self, prices: list, period: int) -> float:
-        """Calcula EMA simple"""
+    def _calculate_ema(
+        self,
+        prices: list,
+        period: int,
+        prev_ema: Optional[float] = None
+    ) -> float:
+        """
+        Calcula EMA de forma incremental O(1) si hay EMA previo.
+
+        Args:
+            prices: Lista de precios
+            period: Período del EMA
+            prev_ema: EMA del período anterior (para cálculo incremental)
+
+        Returns:
+            Valor del EMA
+        """
+        if len(prices) == 0:
+            return 0.0
+
+        multiplier = 2 / (period + 1)
+
+        # Si hay EMA previo y suficientes datos, cálculo incremental O(1)
+        if prev_ema is not None and len(prices) >= period:
+            current_price = prices[-1]
+            return (current_price * multiplier) + (prev_ema * (1 - multiplier))
+
+        # Primera vez o insuficientes datos: cálculo completo
         if len(prices) < period:
             return sum(prices) / len(prices)
 
-        multiplier = 2 / (period + 1)
+        # Cálculo inicial completo (solo la primera vez)
         ema = prices[0]
         for price in prices[1:]:
             ema = (price * multiplier) + (ema * (1 - multiplier))
         return ema
+
+    def _calculate_rsi(self, prices: list, period: int) -> float:
+        """Calcula RSI"""
+        if len(prices) < period + 1:
+            return 50.0  # Valor neutral si no hay suficientes datos
+
+        gains = []
+        losses = []
+        for i in range(1, len(prices)):
+            change = prices[i] - prices[i - 1]
+            if change > 0:
+                gains.append(change)
+                losses.append(0)
+            else:
+                gains.append(0)
+                losses.append(abs(change))
+
+        # Usar solo los ultimos 'period' cambios
+        recent_gains = gains[-period:]
+        recent_losses = losses[-period:]
+
+        avg_gain = sum(recent_gains) / period
+        avg_loss = sum(recent_losses) / period
+
+        if avg_loss == 0:
+            return 100.0
+        rs = avg_gain / avg_loss
+        return 100 - (100 / (1 + rs))
 
     def on_candle(self, candle: RealtimeCandle):
         """Procesa vela y genera senales"""
         self._prices.append(candle.close)
 
         # Mantener solo los ultimos N precios
-        max_prices = max(self.fast_period, self.slow_period) * 2
+        max_prices = max(self.fast_period, self.slow_period, self.rsi_period) * 2
         if len(self._prices) > max_prices:
             self._prices = self._prices[-max_prices:]
 
@@ -545,20 +670,25 @@ class SimpleMovingAverageStrategy(RealtimeStrategy):
         if len(self._prices) < self.slow_period:
             return
 
-        # Calcular EMAs
-        fast_ema = self._calculate_ema(self._prices, self.fast_period)
-        slow_ema = self._calculate_ema(self._prices, self.slow_period)
+        # Calcular EMAs de forma incremental O(1)
+        fast_ema = self._calculate_ema(self._prices, self.fast_period, self._prev_fast_ema)
+        slow_ema = self._calculate_ema(self._prices, self.slow_period, self._prev_slow_ema)
+
+        # Calcular RSI
+        rsi = self._calculate_rsi(self._prices, self.rsi_period)
 
         # Detectar cruces
         if self._prev_fast_ema and self._prev_slow_ema:
-            # Cruce alcista
-            if self._prev_fast_ema <= self._prev_slow_ema and fast_ema > slow_ema:
+            # Cruce alcista + RSI en zona neutral
+            if (self._prev_fast_ema <= self._prev_slow_ema and fast_ema > slow_ema and
+                self.rsi_lower_bound < rsi < self.rsi_upper_bound):
                 stop_loss = candle.close * 0.98  # 2% stop loss
                 take_profit = candle.close * 1.04  # 4% take profit
                 self.buy(candle.close, stop_loss=stop_loss, take_profit=take_profit)
 
-            # Cruce bajista
-            elif self._prev_fast_ema >= self._prev_slow_ema and fast_ema < slow_ema:
+            # Cruce bajista O RSI sobrecomprado
+            elif (self._prev_fast_ema >= self._prev_slow_ema and fast_ema < slow_ema) or \
+                 rsi > self.rsi_sell_threshold:
                 self.sell(candle.close)
 
         self._prev_fast_ema = fast_ema

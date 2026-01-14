@@ -4,7 +4,10 @@ Ejecutar: uvicorn src.api:app --reload --host 0.0.0.0 --port 8000
 """
 
 import sys
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Agregar el directorio raiz de Trad-loop al path para importar DataExtractor
 # api.py -> src/ -> StrategyTrader/ -> Trad-loop/
@@ -15,7 +18,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Importar componentes de DataExtractor
 try:
@@ -28,7 +31,7 @@ try:
     from DataExtractor.src.domain import MarketConfig, MarketType, Timeframe
     DATA_EXTRACTOR_AVAILABLE = True
 except ImportError as e:
-    print(f"Warning: DataExtractor not available: {e}")
+    logger.warning(f"DataExtractor not available: {e}")
     DATA_EXTRACTOR_AVAILABLE = False
 
 app = FastAPI(
@@ -294,6 +297,7 @@ class OHLCVResponse(BaseModel):
     timeframe: str
     exchange: str
     count: int
+    warmup_count: int = 0  # Número de velas de warmup al inicio (para cálculo de indicadores)
     data: List[Dict[str, Any]]
 
 
@@ -304,12 +308,17 @@ async def get_ohlcv(
     timeframe: str = Query(..., description="Temporalidad (ej: 1m, 5m, 1h, 1d)"),
     start: str = Query(..., description="Fecha inicio (ISO format: 2024-01-01T00:00:00)"),
     end: str = Query(..., description="Fecha fin (ISO format: 2024-01-31T23:59:59)"),
+    warmup_candles: int = Query(100, description="Velas adicionales para warmup de indicadores (default: 100)"),
 ):
     """
     Obtiene datos OHLCV (velas) de un exchange.
 
     Los datos se obtienen directamente del exchange via CCXT.
     Para grandes rangos de fechas, considerar usar el endpoint de extraccion async.
+
+    El parametro warmup_candles permite obtener velas adicionales antes del rango solicitado
+    para que los indicadores tecnicos (EMA, RSI, MACD, etc.) tengan suficientes datos
+    historicos para calcular valores precisos desde el inicio del rango.
 
     Returns:
         - symbol: Par de trading
@@ -341,6 +350,23 @@ async def get_ohlcv(
             "1M": Timeframe.ONE_MONTH,
         }
 
+        # Mapear timeframe a minutos para calcular warmup
+        timeframe_minutes = {
+            "1m": 1,
+            "5m": 5,
+            "15m": 15,
+            "30m": 30,
+            "1h": 60,
+            "2h": 120,
+            "4h": 240,
+            "6h": 360,
+            "12h": 720,
+            "1d": 1440,
+            "3d": 4320,
+            "1w": 10080,
+            "1M": 43200,
+        }
+
         if timeframe not in timeframe_map:
             raise HTTPException(
                 status_code=400,
@@ -363,8 +389,32 @@ async def get_ohlcv(
         if start_dt >= end_dt:
             raise HTTPException(status_code=400, detail="La fecha inicio debe ser anterior a la fecha fin")
 
-        # Obtener datos OHLCV
-        df = adapter.fetch_ohlcv(symbol, tf_enum, start_dt, end_dt)
+        # Calcular fecha inicio extendida para warmup de indicadores
+        if warmup_candles > 0:
+            warmup_minutes = warmup_candles * timeframe_minutes[timeframe]
+            extended_start_dt = start_dt - timedelta(minutes=warmup_minutes)
+        else:
+            extended_start_dt = start_dt
+
+        # Obtener datos OHLCV (con warmup incluido)
+        df = adapter.fetch_ohlcv(symbol, tf_enum, extended_start_dt, end_dt)
+
+        # Calcular cuántas velas son de warmup (antes del start_dt solicitado)
+        actual_warmup_count = 0
+        if warmup_candles > 0 and 'timestamp' in df.columns and len(df) > 0:
+            try:
+                # Asegurar comparación sin timezone (naive)
+                start_naive = start_dt.replace(tzinfo=None) if start_dt.tzinfo else start_dt
+                # Contar velas con timestamp < start_dt
+                timestamps = df['timestamp']
+                if hasattr(timestamps.iloc[0], 'tzinfo') and timestamps.iloc[0].tzinfo:
+                    timestamps = timestamps.dt.tz_localize(None)
+                warmup_mask = timestamps < start_naive
+                actual_warmup_count = int(warmup_mask.sum())
+            except Exception as e:
+                # Si falla el cálculo de warmup, continuar sin warmup
+                logger.warning(f"Could not calculate warmup count: {e}")
+                actual_warmup_count = 0
 
         # Convertir timestamp a string ISO para JSON
         data = df.to_dict(orient='records')
@@ -377,6 +427,7 @@ async def get_ohlcv(
             timeframe=timeframe,
             exchange=exchange,
             count=len(data),
+            warmup_count=actual_warmup_count,
             data=data
         )
 
@@ -569,7 +620,7 @@ try:
     register_websocket_routes(app)
     WEBSOCKET_AVAILABLE = True
 except ImportError as e:
-    print(f"Warning: WebSocket routes not available: {e}")
+    logger.warning(f"WebSocket routes not available: {e}")
     WEBSOCKET_AVAILABLE = False
 
 
@@ -580,7 +631,7 @@ try:
     register_backtest_routes(app)
     BACKTEST_AVAILABLE = True
 except ImportError as e:
-    print(f"Warning: Backtest routes not available: {e}")
+    logger.warning(f"Backtest routes not available: {e}")
     BACKTEST_AVAILABLE = False
 
 
@@ -591,7 +642,7 @@ try:
     register_paper_trading_routes(app)
     PAPER_TRADING_AVAILABLE = True
 except ImportError as e:
-    print(f"Warning: Paper trading routes not available: {e}")
+    logger.warning(f"Paper trading routes not available: {e}")
     PAPER_TRADING_AVAILABLE = False
 
 
@@ -614,6 +665,7 @@ def run_api(host: str = "0.0.0.0", port: int = 8000, reload: bool = False):
 if __name__ == "__main__":
     # Ejemplo: ejecutar directamente con python -m src.api
     import uvicorn
-    print("Iniciando Trad-loop API en http://localhost:8000")
-    print("Documentación disponible en http://localhost:8000/docs")
+    logging.basicConfig(level=logging.INFO)
+    logger.info("Iniciando Trad-loop API en http://localhost:8000")
+    logger.info("Documentación disponible en http://localhost:8000/docs")
     uvicorn.run(app, host="0.0.0.0", port=8000)

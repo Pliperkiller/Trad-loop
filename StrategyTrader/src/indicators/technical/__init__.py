@@ -6,6 +6,7 @@ from src.indicators.technical.trend import (
     vwma,
     parabolic_sar,
     supertrend,
+    linear_regression,
 )
 from src.indicators.technical.momentum import (
     rsi,
@@ -36,6 +37,7 @@ __all__ = [
     "vwma",
     "parabolic_sar",
     "supertrend",
+    "linear_regression",
     # Momentum
     "rsi",
     "macd",

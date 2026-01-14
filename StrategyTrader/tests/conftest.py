@@ -21,11 +21,17 @@ def sample_ohlcv_data():
     returns = np.random.normal(0.0002, 0.02, n_bars)
     close_prices = base_price * np.cumprod(1 + returns)
 
-    # Generar OHLC realista
-    high_prices = close_prices * (1 + np.abs(np.random.normal(0, 0.01, n_bars)))
-    low_prices = close_prices * (1 - np.abs(np.random.normal(0, 0.01, n_bars)))
+    # Generar open prices basados en close anterior
     open_prices = np.roll(close_prices, 1)
     open_prices[0] = base_price
+
+    # Generar high y low asegurando validez OHLCV
+    # high >= max(open, close), low <= min(open, close)
+    high_factor = 1 + np.abs(np.random.normal(0, 0.01, n_bars))
+    low_factor = 1 - np.abs(np.random.normal(0, 0.01, n_bars))
+
+    high_prices = np.maximum(open_prices, close_prices) * high_factor
+    low_prices = np.minimum(open_prices, close_prices) * low_factor
 
     volume = np.random.uniform(1000, 10000, n_bars)
 
@@ -53,10 +59,13 @@ def trending_data():
     noise = np.random.normal(0, 2, n_bars)
     close_prices = trend + noise
 
-    high_prices = close_prices * 1.01
-    low_prices = close_prices * 0.99
+    # Generar open prices basados en close anterior
     open_prices = np.roll(close_prices, 1)
     open_prices[0] = 100
+
+    # Asegurar validez OHLCV: high >= max(open, close), low <= min(open, close)
+    high_prices = np.maximum(open_prices, close_prices) * 1.01
+    low_prices = np.minimum(open_prices, close_prices) * 0.99
 
     volume = np.random.uniform(1000, 10000, n_bars)
 

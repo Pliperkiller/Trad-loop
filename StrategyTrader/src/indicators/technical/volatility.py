@@ -93,8 +93,8 @@ def bollinger_bands(
     percent_b = (data - lower) / (upper - lower)
 
     return BollingerBandsResult(
-        middle=middle,
         upper=upper,
+        middle=middle,
         lower=lower,
         bandwidth=bandwidth,
         percent_b=percent_b

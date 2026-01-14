@@ -376,13 +376,17 @@ class TestStrategyEdgeCases:
     """Tests para casos limite"""
 
     def test_empty_data(self, sample_strategy_config):
-        """Test con DataFrame vacio"""
+        """Test con DataFrame vacio - debe validar o cargar sin validacion"""
         strategy = MovingAverageCrossoverStrategy(sample_strategy_config)
 
         empty_data = pd.DataFrame(columns=['open', 'high', 'low', 'close', 'volume'])
 
-        strategy.load_data(empty_data)
-        # No debe fallar con datos vacios
+        # Con validacion debe rechazar datos vacios
+        with pytest.raises(ValueError, match="vacío"):
+            strategy.load_data(empty_data, validate=True)
+
+        # Sin validacion puede cargar datos vacios (edge case)
+        strategy.load_data(empty_data, validate=False)
 
     def test_single_bar(self, sample_strategy_config):
         """Test con un solo bar de datos"""

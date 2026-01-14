@@ -30,7 +30,7 @@ Ver conversación donde desarrollamos este código completo
 
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Tuple, Callable, Optional, Any
+from typing import Dict, List, Tuple, Callable, Optional, Any, TYPE_CHECKING
 import itertools
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import warnings
@@ -176,20 +176,37 @@ class StrategyOptimizer:
             result.update(params)
             return result
     
-    def grid_search(self, verbose: bool = True):
-        return grid_search(self, verbose=verbose)
+    def grid_search(self, verbose: bool = True,
+                    progress_callback: Optional[Callable[[int, int], None]] = None):
+        return grid_search(self, verbose=verbose, progress_callback=progress_callback)
 
 
-    def random_search(self, n_iter: int = 100, verbose: bool = True):
-        return random_search(self, n_iter, verbose)
+    def random_search(self, n_iter: int = 100, verbose: bool = True,
+                      progress_callback: Optional[Callable[[int, int], None]] = None,
+                      n_jobs: int = -1):
+        """Random Search con paralelización y respeto de step."""
+        return random_search(self, n_iter, verbose, progress_callback=progress_callback,
+                            n_jobs=n_jobs if n_jobs != -1 else self.n_jobs or -1)
 
 
-    def bayesian_optimization(self, n_calls: int = 50, verbose: bool = True):
-        return bayesian_optimization(self, n_calls, verbose)
+    def bayesian_optimization(self, n_calls: int = 50, verbose: bool = True,
+                              progress_callback: Optional[Callable[[int, int], None]] = None,
+                              n_jobs: int = -1, batch_size: int = None):
+        """Bayesian Optimization con batch acquisition paralela y respeto de step."""
+        return bayesian_optimization(self, n_calls, verbose=verbose,
+                                    progress_callback=progress_callback,
+                                    n_jobs=n_jobs if n_jobs != -1 else self.n_jobs or -1,
+                                    batch_size=batch_size)
 
     def genetic_algorithm(self, population_size: int = 20,
-                         max_generations: int = 50, verbose: bool = True):
-        return genetic_algorithm(self, population_size, max_generations, verbose)
+                         max_generations: int = 50, verbose: bool = True,
+                         progress_callback: Optional[Callable[[int, int], None]] = None,
+                         n_jobs: int = -1):
+        """Genetic Algorithm con paralelización y respeto de step."""
+        return genetic_algorithm(self, population_size=population_size,
+                                 max_generations=max_generations, verbose=verbose,
+                                 progress_callback=progress_callback,
+                                 n_jobs=n_jobs if n_jobs != -1 else self.n_jobs or -1)
     
     def walk_forward_optimization(self, optimization_method: str = 'random',
                                  n_splits: int = 5, train_size: float = 0.6,

@@ -1,6 +1,6 @@
 """Base classes and protocols for indicators module."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol, Union, Tuple, Optional
 import pandas as pd
 import numpy as np
@@ -28,11 +28,15 @@ class IndicatorResult:
 @dataclass
 class BollingerBandsResult(IndicatorResult):
     """Result from Bollinger Bands calculation."""
-    middle: pd.Series
     upper: pd.Series
+    middle: pd.Series
     lower: pd.Series
-    bandwidth: pd.Series
-    percent_b: pd.Series
+    bandwidth: Optional[pd.Series] = field(default=None)
+    percent_b: Optional[pd.Series] = field(default=None)
+
+    def __iter__(self):
+        """Support tuple unpacking: upper, middle, lower = bollinger_bands(...)"""
+        return iter((self.upper, self.middle, self.lower))
 
 
 @dataclass
@@ -42,12 +46,20 @@ class MACDResult(IndicatorResult):
     signal_line: pd.Series
     histogram: pd.Series
 
+    def __iter__(self):
+        """Support tuple unpacking: macd, signal, hist = macd(...)"""
+        return iter((self.macd_line, self.signal_line, self.histogram))
+
 
 @dataclass
 class StochasticResult(IndicatorResult):
     """Result from Stochastic calculation."""
     k: pd.Series
     d: pd.Series
+
+    def __iter__(self):
+        """Support tuple unpacking: k, d = stochastic(...)"""
+        return iter((self.k, self.d))
 
 
 @dataclass
@@ -109,6 +121,20 @@ class ParabolicSARResult(IndicatorResult):
     """Result from Parabolic SAR calculation."""
     sar: pd.Series
     trend: pd.Series  # 1 for uptrend, -1 for downtrend
+
+
+@dataclass
+class LinearRegressionResult(IndicatorResult):
+    """Result from Linear Regression calculation."""
+    slope: pd.Series
+    slope_normalized_1: pd.Series  # slope / avg price of window
+    slope_normalized_2: pd.Series  # slope / close price (last candle)
+    slope_normalized_3: pd.Series  # slope / open price of window
+    intercept: pd.Series
+    r_squared: pd.Series
+    residual: pd.Series           # actual price - predicted price
+    residual_std: pd.Series       # std deviation of residuals in window
+    residual_zscore: pd.Series    # residual / residual_std
 
 
 def validate_series(

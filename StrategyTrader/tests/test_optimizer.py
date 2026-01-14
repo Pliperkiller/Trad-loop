@@ -256,7 +256,7 @@ class TestRandomSearch:
         result = optimizer_with_params.random_search(n_iter=5, verbose=False)
 
         assert isinstance(result, OptimizationResult)
-        assert result.method == 'Random Search'
+        assert 'Random Search' in result.method  # Puede ser 'Random Search' o 'Random Search (Parallel)'
         assert result.iterations == 5
 
     def test_random_search_returns_best(self, optimizer_with_params):

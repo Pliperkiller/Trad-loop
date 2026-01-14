@@ -52,6 +52,7 @@ from src.indicators.base import (
     PivotPointsResult,
     SupertrendResult,
     ParabolicSARResult,
+    LinearRegressionResult,
     validate_series,
     validate_period,
     validate_ohlcv,
@@ -65,6 +66,7 @@ from src.indicators.technical import (
     vwma,
     parabolic_sar,
     supertrend,
+    linear_regression,
     # Momentum
     rsi,
     macd,
@@ -105,6 +107,7 @@ class TechnicalIndicators:
     vwma = staticmethod(vwma)
     parabolic_sar = staticmethod(parabolic_sar)
     supertrend = staticmethod(supertrend)
+    linear_regression = staticmethod(linear_regression)
 
     # Momentum indicators
     rsi = staticmethod(rsi)
@@ -144,6 +147,7 @@ __all__ = [
     "PivotPointsResult",
     "SupertrendResult",
     "ParabolicSARResult",
+    "LinearRegressionResult",
     "validate_series",
     "validate_period",
     "validate_ohlcv",
@@ -153,6 +157,7 @@ __all__ = [
     "vwma",
     "parabolic_sar",
     "supertrend",
+    "linear_regression",
     # Momentum
     "rsi",
     "macd",
