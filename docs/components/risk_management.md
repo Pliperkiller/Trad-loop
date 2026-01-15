@@ -1,36 +1,34 @@
-# Risk Management - Manual de Componente
+# Risk Management
 
-## Descripcion
+The **risk_management** module provides professional tools for risk management in algorithmic trading.
 
-El modulo **risk_management** proporciona herramientas profesionales para gestion de riesgo en trading algoritmico.
-
-## Arquitectura
+## Architecture
 
 ```
 risk_management/
-├── risk_manager.py        # Orquestador principal
-├── models.py              # Modelos de datos
-├── config.py              # Configuracion
-├── position_sizer.py      # Dimensionamiento de posiciones
-├── risk_limits.py         # Limites de riesgo
-└── correlation_manager.py # Gestion de correlacion
+├── risk_manager.py        # Main orchestrator
+├── models.py              # Data models
+├── config.py              # Configuration
+├── position_sizer.py      # Position sizing
+├── risk_limits.py         # Risk limits
+└── correlation_manager.py # Correlation management
 ```
 
-## Uso Basico
+## Basic Usage
 
-### Configuracion
+### Configuration
 
 ```python
 from src.risk_management import RiskManager, RiskConfig
 
 config = RiskConfig(
-    max_position_size_pct=0.10,      # Max 10% por posicion
-    max_portfolio_risk_pct=0.20,     # Max 20% riesgo total
-    max_correlation=0.7,              # Max correlacion
-    daily_loss_limit_pct=0.05,       # Max 5% perdida diaria
+    max_position_size_pct=0.10,      # Max 10% per position
+    max_portfolio_risk_pct=0.20,     # Max 20% total risk
+    max_correlation=0.7,              # Max correlation
+    daily_loss_limit_pct=0.05,       # Max 5% daily loss
     max_drawdown_pct=0.15,           # Max 15% drawdown
-    max_consecutive_losses=5,         # Max perdidas consecutivas
-    risk_free_rate=0.02              # Tasa libre de riesgo
+    max_consecutive_losses=5,         # Max consecutive losses
+    risk_free_rate=0.02              # Risk-free rate
 )
 
 risk_manager = RiskManager(config)
@@ -40,58 +38,58 @@ risk_manager = RiskManager(config)
 
 ### Fixed Fractional
 
-Arriesgar un porcentaje fijo del capital por trade.
+Risk a fixed percentage of capital per trade.
 
 ```python
 from src.risk_management import PositionSizer, SizingMethod
 
 sizer = PositionSizer(
     method=SizingMethod.FIXED_FRACTIONAL,
-    risk_per_trade=0.02  # 2% del capital
+    risk_per_trade=0.02  # 2% of capital
 )
 
-# Calcular tamano
+# Calculate size
 position_size = sizer.calculate(
     capital=10000,
     entry_price=50000,
-    stop_loss=49000  # 2% de riesgo en precio
+    stop_loss=49000  # 2% price risk
 )
 
-# Resultado: cantidad que arriesga 2% del capital
+# Result: quantity that risks 2% of capital
 print(f"Position size: {position_size:.4f} BTC")
 print(f"Risk amount: ${10000 * 0.02:.2f}")
 ```
 
 ### Kelly Criterion
 
-Dimensionamiento optimo basado en edge y probabilidades.
+Optimal sizing based on edge and probabilities.
 
 ```python
 sizer = PositionSizer(
     method=SizingMethod.KELLY_CRITERION,
     win_rate=0.55,        # 55% win rate
-    avg_win=100,          # Ganancia promedio $100
-    avg_loss=80,          # Perdida promedio $80
-    kelly_fraction=0.5    # Half Kelly (mas conservador)
+    avg_win=100,          # Average win $100
+    avg_loss=80,          # Average loss $80
+    kelly_fraction=0.5    # Half Kelly (more conservative)
 )
 
 kelly_pct = sizer.calculate_kelly()
-print(f"Kelly sugiere: {kelly_pct:.2%} del capital")
+print(f"Kelly suggests: {kelly_pct:.2%} of capital")
 
-# Formula Kelly:
+# Kelly formula:
 # f = (p * b - q) / b
-# donde p = win_rate, q = 1-p, b = avg_win/avg_loss
+# where p = win_rate, q = 1-p, b = avg_win/avg_loss
 ```
 
 ### Optimal-f
 
-Basado en la mayor perdida historica.
+Based on the largest historical loss.
 
 ```python
 sizer = PositionSizer(
     method=SizingMethod.OPTIMAL_F,
-    largest_loss=500,     # Mayor perdida historica
-    fraction=0.25         # 25% del optimal-f
+    largest_loss=500,     # Largest historical loss
+    fraction=0.25         # 25% of optimal-f
 )
 
 optimal_size = sizer.calculate(capital=10000)
@@ -99,32 +97,32 @@ optimal_size = sizer.calculate(capital=10000)
 
 ### ATR-Based
 
-Dimensionamiento basado en volatilidad (ATR).
+Sizing based on volatility (ATR).
 
 ```python
 sizer = PositionSizer(
     method=SizingMethod.ATR_BASED,
-    atr_multiplier=2.0,   # Stop a 2x ATR
+    atr_multiplier=2.0,   # Stop at 2x ATR
     risk_per_trade=0.02
 )
 
 position_size = sizer.calculate(
     capital=10000,
     entry_price=50000,
-    atr=1000  # ATR actual
+    atr=1000  # Current ATR
 )
 ```
 
 ## Risk Limits
 
-### Limites de Posicion
+### Position Limits
 
 ```python
 from src.risk_management import RiskLimitChecker
 
 checker = RiskLimitChecker(config)
 
-# Verificar limite de posicion
+# Check position limit
 can_open = checker.check_position_limit(
     symbol="BTC/USDT",
     quantity=0.5,
@@ -133,13 +131,13 @@ can_open = checker.check_position_limit(
 )
 
 if not can_open['approved']:
-    print(f"Rechazado: {can_open['reason']}")
+    print(f"Rejected: {can_open['reason']}")
 ```
 
-### Limites de Exposicion
+### Exposure Limits
 
 ```python
-# Verificar exposicion total
+# Check total exposure
 exposure_check = checker.check_exposure_limit(
     current_positions=[...],
     portfolio_value=100000
@@ -150,39 +148,39 @@ print(f"Limit: {exposure_check['limit']:.2%}")
 print(f"Available: {exposure_check['available']:.2%}")
 ```
 
-### Limite de Perdida Diaria
+### Daily Loss Limit
 
 ```python
-# Verificar limite diario
+# Check daily limit
 daily_check = checker.check_daily_loss_limit(
     today_pnl=-400,
     initial_capital=10000
 )
 
 if daily_check['limit_reached']:
-    print("ALERTA: Limite de perdida diaria alcanzado")
+    print("ALERT: Daily loss limit reached")
     print(f"Loss: {daily_check['current_loss']:.2%}")
 ```
 
-### Proteccion de Drawdown
+### Drawdown Protection
 
 ```python
-# Verificar drawdown
+# Check drawdown
 dd_check = checker.check_drawdown_limit(
     current_equity=8500,
     peak_equity=10000
 )
 
 if dd_check['limit_breached']:
-    print("ALERTA: Drawdown maximo excedido")
+    print("ALERT: Maximum drawdown exceeded")
     print(f"Current DD: {dd_check['current_drawdown']:.2%}")
     print(f"Limit: {dd_check['limit']:.2%}")
 ```
 
-## Evaluacion de Trade
+## Trade Assessment
 
 ```python
-# Evaluar un trade antes de ejecutar
+# Assess a trade before execution
 assessment = risk_manager.assess_trade(
     symbol="BTC/USDT",
     side="BUY",
@@ -207,39 +205,39 @@ if not assessment.approved:
 
 ## Correlation Manager
 
-### Monitoreo de Correlacion
+### Correlation Monitoring
 
 ```python
 from src.risk_management import CorrelationManager
 
 corr_manager = CorrelationManager(
-    lookback_period=60,    # 60 periodos
+    lookback_period=60,    # 60 periods
     correlation_threshold=0.7
 )
 
-# Actualizar con datos
+# Update with data
 corr_manager.update(price_data)
 
-# Obtener matriz
+# Get matrix
 corr_matrix = corr_manager.get_correlation_matrix()
 print(corr_matrix)
 ```
 
-### Deteccion de Clusters
+### Cluster Detection
 
 ```python
-# Encontrar activos altamente correlacionados
+# Find highly correlated assets
 clusters = corr_manager.get_correlation_clusters(threshold=0.7)
 
 for cluster in clusters:
     print(f"Cluster: {cluster}")
-    # Ejemplo: ['BTC/USDT', 'ETH/USDT'] - alta correlacion
+    # Example: ['BTC/USDT', 'ETH/USDT'] - high correlation
 ```
 
-### Riesgo de Concentracion
+### Concentration Risk
 
 ```python
-# Evaluar riesgo de concentracion
+# Assess concentration risk
 concentration = corr_manager.calculate_concentration_risk(
     positions=[
         {'symbol': 'BTC/USDT', 'weight': 0.4},
@@ -252,13 +250,13 @@ print(f"Effective Positions: {concentration['effective_positions']:.1f}")
 print(f"Concentration Risk: {concentration['risk_score']:.2f}")
 
 if concentration['risk_score'] > 0.7:
-    print("ADVERTENCIA: Alta concentracion de riesgo")
+    print("WARNING: High risk concentration")
 ```
 
-### Cambio de Regimen
+### Regime Change Detection
 
 ```python
-# Detectar cambios en correlaciones
+# Detect correlation changes
 regime_change = corr_manager.detect_regime_change(
     current_window=20,
     historical_window=60
@@ -272,58 +270,58 @@ if regime_change['detected']:
 
 ## Value at Risk (VaR)
 
-### VaR Historico
+### Historical VaR
 
 ```python
 from src.risk_management import VaRCalculator
 
 var_calc = VaRCalculator()
 
-# VaR historico
+# Historical VaR
 var_95 = var_calc.historical_var(
     returns=portfolio_returns,
     confidence=0.95
 )
 print(f"VaR 95%: {var_95:.2%}")
 
-# Con ventana especifica
+# With specific window
 var_99 = var_calc.historical_var(
-    returns=portfolio_returns[-252:],  # Ultimo ano
+    returns=portfolio_returns[-252:],  # Last year
     confidence=0.99
 )
 print(f"VaR 99%: {var_99:.2%}")
 ```
 
-### VaR Parametrico
+### Parametric VaR
 
 ```python
-# VaR parametrico (asume normalidad)
+# Parametric VaR (assumes normality)
 var_parametric = var_calc.parametric_var(
     mean=portfolio_returns.mean(),
     std=portfolio_returns.std(),
     confidence=0.95
 )
-print(f"VaR Parametrico 95%: {var_parametric:.2%}")
+print(f"Parametric VaR 95%: {var_parametric:.2%}")
 ```
 
 ### CVaR (Expected Shortfall)
 
 ```python
-# CVaR - perdida esperada cuando se excede VaR
+# CVaR - expected loss when VaR is exceeded
 cvar = var_calc.conditional_var(
     returns=portfolio_returns,
     confidence=0.95
 )
 print(f"CVaR 95%: {cvar:.2%}")
 
-# Interpretacion: "En el peor 5% de los casos,
-# la perdida promedio es {cvar}%"
+# Interpretation: "In the worst 5% of cases,
+# the average loss is {cvar}%"
 ```
 
-### VaR de Portafolio
+### Portfolio VaR
 
 ```python
-# VaR considerando correlaciones
+# VaR considering correlations
 portfolio_var = var_calc.portfolio_var(
     weights={'BTC/USDT': 0.5, 'ETH/USDT': 0.3, 'SOL/USDT': 0.2},
     returns_data=multi_asset_returns,
@@ -339,13 +337,13 @@ from src.risk_management import RiskDashboard
 
 dashboard = RiskDashboard(risk_manager)
 
-# Generar reporte
+# Generate report
 report = dashboard.generate_report(
     positions=current_positions,
     equity_curve=equity_curve
 )
 
-# Metricas clave
+# Key metrics
 print("=== RISK DASHBOARD ===")
 print(f"Total Exposure: {report['total_exposure']:.2%}")
 print(f"Portfolio Beta: {report['portfolio_beta']:.2f}")
@@ -354,21 +352,21 @@ print(f"CVaR 95%: {report['cvar_95']:.2%}")
 print(f"Current Drawdown: {report['current_drawdown']:.2%}")
 print(f"Correlation Risk: {report['correlation_risk']:.2f}")
 
-# Alertas activas
+# Active alerts
 for alert in report['active_alerts']:
     print(f"ALERT: {alert['type']} - {alert['message']}")
 
-# Graficar
+# Plot
 dashboard.plot_risk_metrics()
 ```
 
-## Integracion con Trading
+## Trading Integration
 
 ```python
 from src.paper_trading import PaperTradingEngine
 from src.risk_management import RiskManager
 
-# Configurar risk manager
+# Configure risk manager
 risk_manager = RiskManager(config)
 
 class RiskAwareStrategy(RealtimeStrategy):
@@ -378,7 +376,7 @@ class RiskAwareStrategy(RealtimeStrategy):
 
     def on_candle(self, candle):
         if self.should_buy(candle):
-            # Evaluar riesgo antes de operar
+            # Assess risk before trading
             assessment = self.risk_manager.assess_trade(
                 symbol=candle.symbol,
                 side="BUY",
@@ -387,7 +385,7 @@ class RiskAwareStrategy(RealtimeStrategy):
             )
 
             if assessment.approved:
-                # Usar position size sugerido
+                # Use suggested position size
                 self.buy(
                     price=candle.close,
                     quantity=assessment.suggested_quantity,
@@ -401,34 +399,40 @@ class RiskAwareStrategy(RealtimeStrategy):
 
 ### RiskManager
 
-| Metodo | Descripcion |
+| Method | Description |
 |--------|-------------|
-| `assess_trade(symbol, side, qty, entry, sl)` | Evaluar trade |
-| `check_limits()` | Verificar todos los limites |
-| `get_available_risk()` | Riesgo disponible |
-| `update_state(positions, equity)` | Actualizar estado |
+| `assess_trade(symbol, side, qty, entry, sl)` | Assess trade |
+| `check_limits()` | Check all limits |
+| `get_available_risk()` | Available risk |
+| `update_state(positions, equity)` | Update state |
 
 ### PositionSizer
 
-| Metodo | Descripcion |
+| Method | Description |
 |--------|-------------|
-| `calculate(capital, entry, sl)` | Calcular tamano |
-| `calculate_kelly()` | Calcular Kelly % |
-| `set_method(method)` | Cambiar metodo |
+| `calculate(capital, entry, sl)` | Calculate size |
+| `calculate_kelly()` | Calculate Kelly % |
+| `set_method(method)` | Change method |
 
 ### RiskConfig
 
-| Campo | Descripcion |
+| Field | Description |
 |-------|-------------|
-| `max_position_size_pct` | Max % por posicion |
-| `max_portfolio_risk_pct` | Max % riesgo total |
-| `daily_loss_limit_pct` | Limite perdida diaria |
+| `max_position_size_pct` | Max % per position |
+| `max_portfolio_risk_pct` | Max % total risk |
+| `daily_loss_limit_pct` | Daily loss limit |
 | `max_drawdown_pct` | Max drawdown |
-| `max_correlation` | Max correlacion |
-| `max_consecutive_losses` | Max perdidas seguidas |
+| `max_correlation` | Max correlation |
+| `max_consecutive_losses` | Max consecutive losses |
 
 ## Tests
 
 ```bash
 pytest tests/risk_management/ -v
 ```
+
+## Related Documentation
+
+- [Portfolio](portfolio.md) - Portfolio management
+- [Paper Trading](paper_trading.md) - Simulated trading
+- [Interfaces](interfaces.md) - IRiskManager protocol

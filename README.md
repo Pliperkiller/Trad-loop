@@ -1,82 +1,96 @@
 # Trad-Loop
 
-**Framework profesional de trading algoritmico multi-activo**
+**Professional Multi-Asset Algorithmic Trading Framework**
 
-Sistema completo para desarrollo, backtesting, optimizacion y ejecucion de estrategias de trading. Soporta criptomonedas (100+ exchanges via CCXT) y mercados tradicionales (Interactive Brokers).
+A complete system for developing, backtesting, optimizing, and executing trading strategies. Supports cryptocurrencies (100+ exchanges via CCXT) and traditional markets (Interactive Brokers).
 
-## Caracteristicas Principales
+## Key Features
 
 - **Multi-Broker**: CCXT (Binance, Bybit, OKX, etc.) + Interactive Brokers
-- **Backtesting Avanzado**: Validacion con Time Series CV, Walk-Forward, Purged K-Fold
-- **Optimizacion**: Grid Search, Random Search, Bayesian, Genetic, Walk-Forward
-- **30+ Indicadores Tecnicos**: RSI, MACD, Bollinger, Ichimoku, ATR, etc.
-- **Datos Fundamentales**: CoinGecko, Glassnode, DeFi Llama, Santiment
-- **Paper Trading**: 17+ tipos de orden (TWAP, VWAP, Trailing, Bracket, OCO)
-- **Gestion de Portafolio**: Risk Parity, Mean-Variance, Inverse Volatility
+- **Advanced Backtesting**: Validation with Time Series CV, Walk-Forward, Purged K-Fold
+- **Optimization**: Grid Search, Random Search, Bayesian, Genetic, Walk-Forward
+- **30+ Technical Indicators**: RSI, MACD, Bollinger, Ichimoku, ATR, etc.
+- **Fundamental Data**: CoinGecko, Glassnode, DeFi Llama, Santiment
+- **Paper Trading**: 17+ order types (TWAP, VWAP, Trailing, Bracket, OCO)
+- **Portfolio Management**: Risk Parity, Mean-Variance, Inverse Volatility
 - **Risk Management**: Kelly Criterion, VaR, Position Sizing, Correlation Tracking
 - **Stress Testing**: Monte Carlo, Scenario Analysis, Sensitivity Analysis
-- **API REST**: FastAPI con endpoints para estrategias, trades, performance
+- **REST & WebSocket APIs**: FastAPI with endpoints for strategies, trades, performance
+- **Async Job System**: Background task execution for backtests and optimizations
 
-## Estructura del Proyecto
+## Project Structure
 
 ```
 Trad-loop/
-├── DataExtractor/          # Extraccion de datos de mercado
+├── DataExtractor/              # Market data extraction
 │   ├── src/
-│   │   ├── domain/         # Entidades y repositorios
-│   │   ├── application/    # Servicios y casos de uso
-│   │   ├── infrastructure/ # Adaptadores de exchanges
-│   │   └── presentation/   # GUI (Tkinter) y CLI
+│   │   ├── domain/             # Entities and repositories
+│   │   ├── application/        # Services and use cases
+│   │   ├── infrastructure/     # Exchange adapters
+│   │   └── presentation/       # GUI (Tkinter) and CLI
 │   └── main.py
 │
-├── StrategyTrader/         # Framework de estrategias
+├── StrategyTrader/             # Strategy framework
 │   ├── src/
-│   │   ├── strategy.py     # Base de estrategias
-│   │   ├── performance.py  # Analisis de rendimiento
-│   │   ├── optimizer.py    # Optimizacion de parametros
-│   │   ├── api.py          # REST API
-│   │   ├── broker_bridge/  # Capa multi-broker
-│   │   ├── indicators/     # Indicadores tecnicos/fundamentales
-│   │   ├── optimizers/     # Algoritmos de optimizacion
-│   │   ├── paper_trading/  # Motor de paper trading
-│   │   ├── portfolio/      # Gestion de portafolio
-│   │   ├── risk_management/# Gestion de riesgo
-│   │   └── stress_testing/ # Pruebas de estres
-│   ├── tests/              # Suite de tests
-│   └── examples/           # Ejemplos de uso
+│   │   ├── strategy/           # Strategy base classes
+│   │   │   ├── base.py         # TradingStrategy ABC
+│   │   │   └── strategies/     # Built-in strategies
+│   │   ├── performance.py      # Performance analysis
+│   │   ├── optimizer.py        # Parameter optimization
+│   │   ├── job_manager.py      # Async job system
+│   │   ├── api.py              # Main REST API
+│   │   ├── backtest_api.py     # Backtest API
+│   │   ├── websocket_api.py    # WebSocket API
+│   │   ├── api_paper_trading.py# Paper Trading API
+│   │   ├── broker_bridge/      # Multi-broker layer
+│   │   ├── indicators/         # Technical/fundamental indicators
+│   │   ├── optimizers/         # Optimization algorithms
+│   │   │   ├── validation/     # Cross-validation methods
+│   │   │   └── analysis/       # Overfitting detection
+│   │   ├── paper_trading/      # Paper trading engine
+│   │   │   ├── orders/         # Order types
+│   │   │   └── simulators/     # Specialized simulators
+│   │   ├── portfolio/          # Portfolio management
+│   │   ├── risk_management/    # Risk management
+│   │   ├── stress_testing/     # Stress tests
+│   │   ├── interfaces/         # Protocols and DI container
+│   │   ├── api_modules/        # API helper modules
+│   │   └── config/             # Configuration
+│   ├── tests/                  # Test suite
+│   └── examples/               # Usage examples
 │
-└── docs/                   # Documentacion
-    ├── manual_tecnico.md   # Diagramas C4 y arquitectura
-    ├── manual_uso.md       # Guia general de uso
-    └── componentes/        # Manuales por componente
+└── docs/                       # Documentation
+    ├── technical_manual.md     # C4 diagrams and architecture
+    ├── user_guide.md           # User guide
+    └── components/             # Component manuals
 ```
 
-## Instalacion
+## Installation
 
 ```bash
-# Clonar repositorio
+# Clone repository
 git clone https://github.com/Pliperkiller/Trad-loop.git
 cd Trad-loop
 
-# Crear entorno virtual
+# Create virtual environment
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
 # venv\Scripts\activate   # Windows
 
-# Instalar dependencias
+# Install dependencies
 pip install -r StrategyTrader/requirements.txt
 pip install -r DataExtractor/requirements.txt
 ```
 
-## Inicio Rapido
+## Quick Start
 
-### 1. Crear una Estrategia
+### 1. Create a Strategy
 
 ```python
-from src.strategy import TradingStrategy, TradeSignal, TechnicalIndicators
+from src.strategy.base import TradingStrategy, TradeSignal, TechnicalIndicators
 import pandas as pd
 
-class MiEstrategia(TradingStrategy):
+class MyStrategy(TradingStrategy):
     def __init__(self, fast_period=10, slow_period=20):
         super().__init__()
         self.fast_period = fast_period
@@ -118,16 +132,16 @@ class MiEstrategia(TradingStrategy):
         return signals
 ```
 
-### 2. Ejecutar Backtest
+### 2. Run Backtest
 
 ```python
 import pandas as pd
 
-# Cargar datos
+# Load data
 data = pd.read_csv('BTCUSDT_1h.csv', parse_dates=['timestamp'], index_col='timestamp')
 
-# Crear y ejecutar estrategia
-strategy = MiEstrategia(fast_period=12, slow_period=26)
+# Create and run strategy
+strategy = MyStrategy(fast_period=12, slow_period=26)
 strategy.load_data(data)
 strategy.config.initial_capital = 10000
 strategy.config.risk_per_trade = 0.02
@@ -140,7 +154,7 @@ print(f"Sharpe Ratio: {metrics['sharpe_ratio']:.2f}")
 print(f"Max Drawdown: {metrics['max_drawdown_pct']:.2f}%")
 ```
 
-### 3. Analizar Rendimiento
+### 3. Analyze Performance
 
 ```python
 from src.performance import PerformanceAnalyzer, PerformanceVisualizer
@@ -151,24 +165,24 @@ analyzer = PerformanceAnalyzer(
     initial_capital=10000
 )
 
-# 30+ metricas
+# 30+ metrics
 metrics = analyzer.calculate_all_metrics()
 print(f"Calmar Ratio: {metrics['calmar_ratio']:.2f}")
 print(f"Sortino Ratio: {metrics['sortino_ratio']:.2f}")
 print(f"VaR 95%: {metrics['value_at_risk_95']:.2f}%")
 
-# Visualizacion
+# Visualization
 visualizer = PerformanceVisualizer(analyzer)
 visualizer.plot_comprehensive_dashboard()
 ```
 
-### 4. Optimizar Parametros
+### 4. Optimize Parameters
 
 ```python
 from src.optimizer import StrategyOptimizer
 
 optimizer = StrategyOptimizer(
-    strategy_class=MiEstrategia,
+    strategy_class=MyStrategy,
     data=data,
     initial_capital=10000
 )
@@ -176,50 +190,51 @@ optimizer = StrategyOptimizer(
 optimizer.add_parameter('fast_period', 'int', 5, 20)
 optimizer.add_parameter('slow_period', 'int', 20, 50)
 
-# Optimizacion Bayesiana
+# Bayesian optimization
 results = optimizer.bayesian_optimize(
     n_iterations=50,
     objective='sharpe_ratio'
 )
 
-print(f"Mejores parametros: {results.best_params}")
-print(f"Mejor Sharpe: {results.best_value:.2f}")
+print(f"Best parameters: {results.best_params}")
+print(f"Best Sharpe: {results.best_value:.2f}")
 ```
 
-### 5. Trading en Vivo (Paper)
+### 5. Paper Trading
 
 ```python
 from src.paper_trading import PaperTradingEngine, RealtimeStrategy
 
-class MiEstrategiaRealtime(RealtimeStrategy):
+class MyRealtimeStrategy(RealtimeStrategy):
     def on_candle(self, candle):
-        # Logica de trading
+        # Trading logic
         if self.should_buy(candle):
             self.buy(candle.close, quantity=0.1, stop_loss=candle.close*0.98)
 
     def on_tick(self, symbol, price):
-        # Actualizar trailing stops, etc.
+        # Update trailing stops, etc.
         pass
 
 engine = PaperTradingEngine(initial_capital=10000)
-engine.register_strategy(MiEstrategiaRealtime())
+engine.register_strategy(MyRealtimeStrategy())
 await engine.run_live()
 ```
 
-### 6. Ejecucion Multi-Broker
+### 6. Multi-Broker Execution
 
 ```python
 from src.broker_bridge import UnifiedExecutor, CCXTBroker, IBKRBroker, BrokerOrder
+from src.broker_bridge.core.enums import OrderSide, OrderType
 
 executor = UnifiedExecutor()
 
-# Registrar brokers
+# Register brokers
 executor.register_broker(CCXTBroker("binance", api_key="...", api_secret="..."))
 executor.register_broker(IBKRBroker(port=7497))
 
 await executor.connect_all()
 
-# Crypto -> CCXT automaticamente
+# Crypto -> CCXT automatically
 await executor.submit_order(BrokerOrder(
     symbol="BTC/USDT",
     side=OrderSide.BUY,
@@ -228,7 +243,7 @@ await executor.submit_order(BrokerOrder(
     price=50000
 ))
 
-# Stock -> IBKR automaticamente
+# Stock -> IBKR automatically
 await executor.submit_order(BrokerOrder(
     symbol="AAPL",
     side=OrderSide.BUY,
@@ -237,72 +252,100 @@ await executor.submit_order(BrokerOrder(
 ))
 ```
 
-## Documentacion
+## Documentation
 
-| Documento | Descripcion |
-|-----------|-------------|
-| [Manual Tecnico](docs/manual_tecnico.md) | Arquitectura, diagramas C4, flujos |
-| [Manual de Uso](docs/manual_uso.md) | Guia completa de uso |
-| [Broker Bridge](docs/componentes/broker_bridge.md) | Multi-broker execution |
-| [Paper Trading](docs/componentes/paper_trading.md) | Simulacion de ordenes |
-| [Indicadores](docs/componentes/indicadores.md) | Indicadores tecnicos y fundamentales |
-| [Optimizadores](docs/componentes/optimizadores.md) | Algoritmos de optimizacion |
-| [Portfolio](docs/componentes/portfolio.md) | Gestion de portafolio |
-| [Risk Management](docs/componentes/risk_management.md) | Gestion de riesgo |
+| Document | Description |
+|----------|-------------|
+| [Technical Manual](docs/technical_manual.md) | Architecture, C4 diagrams, flows |
+| [User Guide](docs/user_guide.md) | Complete usage guide |
+| [API Reference](docs/components/api_reference.md) | REST & WebSocket API documentation |
+| [Job Manager](docs/components/job_manager.md) | Async task system |
+| [Broker Bridge](docs/components/broker_bridge.md) | Multi-broker execution |
+| [Paper Trading](docs/components/paper_trading.md) | Order simulation |
+| [Indicators](docs/components/indicators.md) | Technical and fundamental indicators |
+| [Optimizers](docs/components/optimizers.md) | Optimization algorithms |
+| [Portfolio](docs/components/portfolio.md) | Portfolio management |
+| [Risk Management](docs/components/risk_management.md) | Risk management |
+| [Stress Testing](docs/components/stress_testing.md) | Stress testing |
+| [Interfaces](docs/components/interfaces.md) | Protocol system and DI |
 
-## API REST
+## REST API
 
 ```bash
-# Iniciar servidor
+# Start server
+cd StrategyTrader
 uvicorn src.api:app --reload --port 8000
 
-# Endpoints disponibles
-GET  /api/v1/strategies           # Listar estrategias
-GET  /api/v1/trades/{id}          # Obtener trades
-GET  /api/v1/performance/{id}     # Metricas de rendimiento
-GET  /api/v1/equity/{id}          # Curva de equity
+# Main endpoints
+GET  /api/v1/strategies           # List strategies
+GET  /api/v1/trades/{id}          # Get trades
+GET  /api/v1/performance/{id}     # Performance metrics
+GET  /api/v1/equity/{id}          # Equity curve
+GET  /api/v1/exchanges            # Available exchanges
+GET  /api/v1/symbols/{exchange}   # Symbols for exchange
+GET  /api/v1/ohlcv/{exchange}/{symbol}  # OHLCV data
 ```
 
-Swagger UI disponible en: `http://localhost:8000/docs`
+Swagger UI available at: `http://localhost:8000/docs`
+
+## WebSocket API
+
+```python
+import websockets
+import json
+
+async def subscribe_to_candles():
+    async with websockets.connect('ws://localhost:8000/ws/candles') as ws:
+        await ws.send(json.dumps({
+            'action': 'subscribe',
+            'exchange': 'binance',
+            'symbol': 'BTC/USDT',
+            'timeframe': '1h'
+        }))
+        async for message in ws:
+            candle = json.loads(message)
+            print(f"New candle: {candle}")
+```
 
 ## Tests
 
 ```bash
-# Ejecutar todos los tests
+# Run all tests
+cd StrategyTrader
 pytest
 
-# Con coverage
+# With coverage
 pytest --cov=src --cov-report=html
 
-# Tests especificos
+# Specific tests
 pytest tests/test_strategy.py -v
 pytest src/broker_bridge/tests/ -v
 ```
 
-## Dependencias Principales
+## Main Dependencies
 
-| Categoria | Paquetes |
-|-----------|----------|
+| Category | Packages |
+|----------|----------|
 | Data | pandas, numpy, scipy |
 | ML | scikit-learn, scikit-optimize |
 | Exchanges | ccxt, python-binance, ib_insync |
-| Web | fastapi, uvicorn |
+| Web | fastapi, uvicorn, websockets |
 | Viz | matplotlib, seaborn, mplfinance |
 | Testing | pytest, pytest-asyncio |
 
 ## Roadmap
 
-- [ ] Soporte para mas exchanges via CCXT
+- [ ] Support for more exchanges via CCXT
 - [ ] Machine Learning strategies
-- [ ] Backtesting distribuido
-- [ ] Dashboard web interactivo
-- [ ] Alertas y notificaciones
-- [ ] Integracion con TradingView
+- [ ] Distributed backtesting
+- [ ] Interactive web dashboard
+- [ ] Alerts and notifications
+- [ ] TradingView integration
 
-## Licencia
+## License
 
-MIT License - ver [LICENSE](LICENSE) para detalles.
+MIT License - see [LICENSE](LICENSE) for details.
 
-## Autor
+## Author
 
 Carlos Caro ([@Pliperkiller](https://github.com/Pliperkiller))

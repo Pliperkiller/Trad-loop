@@ -78,7 +78,7 @@ def main():
     
     metrics = strategy.get_performance_metrics()
     print(f"  Trades totales: {metrics.get('total_trades', 0)}")
-    print(f"  Win rate: {metrics.get('win_rate', 0):.2f}%")
+    print(f"  Win rate: {metrics.get('win_rate_pct', 0):.2f}%")
     print(f"  Sharpe Ratio: {metrics.get('sharpe_ratio', 0):.2f}")
     print(f"  Retorno total: {metrics.get('total_return_pct', 0):.2f}%")
     

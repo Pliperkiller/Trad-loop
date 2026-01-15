@@ -1,54 +1,54 @@
-# Manual Tecnico - Trad-Loop
+# Technical Manual - Trad-Loop
 
-## Indice
+## Table of Contents
 
-1. [Vision General](#1-vision-general)
-2. [Diagrama C2 - Contexto del Sistema](#2-diagrama-c2---contexto-del-sistema)
-3. [Diagrama C3 - Componentes](#3-diagrama-c3---componentes)
-4. [Arquitectura por Modulo](#4-arquitectura-por-modulo)
-5. [Flujos de Datos](#5-flujos-de-datos)
-6. [Patrones de Diseno](#6-patrones-de-diseno)
-7. [Dependencias Externas](#7-dependencias-externas)
-8. [Estructura de Tests](#8-estructura-de-tests)
+1. [Overview](#1-overview)
+2. [C2 Diagram - System Context](#2-c2-diagram---system-context)
+3. [C3 Diagram - Components](#3-c3-diagram---components)
+4. [Module Architecture](#4-module-architecture)
+5. [Data Flows](#5-data-flows)
+6. [Design Patterns](#6-design-patterns)
+7. [External Dependencies](#7-external-dependencies)
+8. [Test Structure](#8-test-structure)
 
 ---
 
-## 1. Vision General
+## 1. Overview
 
-**Trad-Loop** es un framework de trading algoritmico profesional compuesto por dos sistemas principales:
+**Trad-Loop** is a professional algorithmic trading framework composed of two main systems:
 
-| Sistema | Proposito | Tecnologia |
-|---------|-----------|------------|
-| **DataExtractor** | Extraccion de datos de mercado | Clean Architecture, Tkinter GUI |
-| **StrategyTrader** | Desarrollo y ejecucion de estrategias | Modular, FastAPI, Async |
+| System | Purpose | Technology |
+|--------|---------|------------|
+| **DataExtractor** | Market data extraction | Clean Architecture, Tkinter GUI |
+| **StrategyTrader** | Strategy development and execution | Modular, FastAPI, Async |
 
-### Metricas del Proyecto
+### Project Metrics
 
-- **Lineas de codigo**: ~34,000
+- **Lines of code**: ~34,000
 - **Tests**: ~500+
-- **Modulos**: 10 principales
-- **Exchanges soportados**: 100+ (via CCXT)
+- **Modules**: 10+ main modules
+- **Supported exchanges**: 100+ (via CCXT)
 
 ---
 
-## 2. Diagrama C2 - Contexto del Sistema
+## 2. C2 Diagram - System Context
 
-El diagrama de contexto muestra como Trad-Loop interactua con sistemas externos y usuarios.
+The context diagram shows how Trad-Loop interacts with external systems and users.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│                                   CONTEXTO                                       │
+│                                   CONTEXT                                        │
 │                                                                                  │
 │  ┌──────────────┐                                           ┌──────────────┐    │
-│  │   Trader/    │                                           │   Exchanges  │    │
-│  │  Analista    │                                           │   Crypto     │    │
+│  │   Trader/    │                                           │   Crypto     │    │
+│  │   Analyst    │                                           │  Exchanges   │    │
 │  │              │                                           │  (Binance,   │    │
-│  │  [Persona]   │                                           │  Bybit, OKX) │    │
+│  │  [Person]    │                                           │  Bybit, OKX) │    │
 │  └──────┬───────┘                                           └──────┬───────┘    │
 │         │                                                          │            │
-│         │ Desarrolla estrategias                      Market Data, │            │
-│         │ Analiza resultados                          Order Exec   │            │
-│         │ Ejecuta trades                                           │            │
+│         │ Develops strategies                        Market Data,  │            │
+│         │ Analyzes results                           Order Exec    │            │
+│         │ Executes trades                                          │            │
 │         ▼                                                          ▼            │
 │  ┌─────────────────────────────────────────────────────────────────────────┐   │
 │  │                                                                          │   │
@@ -61,7 +61,7 @@ El diagrama de contexto muestra como Trad-Loop interactua con sistemas externos 
 │  │   │  - CLI          │              │  - Optimization                 │  │   │
 │  │   │  - Exchanges    │              │  - Paper Trading                │  │   │
 │  │   └─────────────────┘              │  - Live Execution               │  │   │
-│  │                                    │  - REST API                     │  │   │
+│  │                                    │  - REST/WebSocket API           │  │   │
 │  │                                    └─────────────────────────────────┘  │   │
 │  │                                                                          │   │
 │  └─────────────────────────────────────────────────────────────────────────┘   │
@@ -78,51 +78,51 @@ El diagrama de contexto muestra como Trad-Loop interactua con sistemas externos 
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Diagrama de Contexto (Mermaid)
+### Context Diagram (Mermaid)
 
 ```mermaid
 C4Context
     title System Context Diagram - Trad-Loop
 
-    Person(trader, "Trader/Analyst", "Desarrolla y ejecuta estrategias de trading")
+    Person(trader, "Trader/Analyst", "Develops and executes trading strategies")
 
     System_Boundary(tradloop, "Trad-Loop") {
-        System(dataextractor, "DataExtractor", "Extraccion de datos de mercado")
-        System(strategytrader, "StrategyTrader", "Framework de estrategias de trading")
+        System(dataextractor, "DataExtractor", "Market data extraction")
+        System(strategytrader, "StrategyTrader", "Trading strategy framework")
     }
 
     System_Ext(exchanges_crypto, "Crypto Exchanges", "Binance, Bybit, OKX, Kraken, etc.")
     System_Ext(ibkr, "Interactive Brokers", "Stocks, Forex, Futures, Options")
     System_Ext(data_apis, "Data APIs", "CoinGecko, Glassnode, DeFi Llama")
-    System_Ext(database, "PostgreSQL", "Almacenamiento persistente")
+    System_Ext(database, "PostgreSQL", "Persistent storage")
     System_Ext(webclient, "Web Client", "Dashboard, Swagger UI")
 
-    Rel(trader, dataextractor, "Extrae datos historicos", "GUI/CLI")
-    Rel(trader, strategytrader, "Desarrolla y ejecuta estrategias", "Python/API")
-    Rel(dataextractor, exchanges_crypto, "Obtiene OHLCV", "REST/WebSocket")
-    Rel(strategytrader, exchanges_crypto, "Ejecuta ordenes", "CCXT")
-    Rel(strategytrader, ibkr, "Ejecuta ordenes", "ib_insync")
-    Rel(strategytrader, data_apis, "Obtiene datos fundamentales", "REST")
-    Rel(strategytrader, database, "Persiste datos", "SQLAlchemy")
-    Rel(webclient, strategytrader, "Consulta API", "REST/JSON")
+    Rel(trader, dataextractor, "Extracts historical data", "GUI/CLI")
+    Rel(trader, strategytrader, "Develops and executes strategies", "Python/API")
+    Rel(dataextractor, exchanges_crypto, "Fetches OHLCV", "REST/WebSocket")
+    Rel(strategytrader, exchanges_crypto, "Executes orders", "CCXT")
+    Rel(strategytrader, ibkr, "Executes orders", "ib_insync")
+    Rel(strategytrader, data_apis, "Fetches fundamental data", "REST")
+    Rel(strategytrader, database, "Persists data", "SQLAlchemy")
+    Rel(webclient, strategytrader, "Queries API", "REST/JSON")
 ```
 
-### Actores y Sistemas Externos
+### Actors and External Systems
 
-| Actor/Sistema | Tipo | Interaccion |
-|---------------|------|-------------|
-| Trader/Analista | Persona | Desarrolla estrategias, analiza resultados |
-| Crypto Exchanges | Sistema Externo | CCXT para 100+ exchanges |
-| Interactive Brokers | Sistema Externo | ib_insync para mercados tradicionales |
-| Data APIs | Sistema Externo | Datos fundamentales on-chain |
-| PostgreSQL | Database | Almacenamiento de trades, metricas |
+| Actor/System | Type | Interaction |
+|--------------|------|-------------|
+| Trader/Analyst | Person | Develops strategies, analyzes results |
+| Crypto Exchanges | External System | CCXT for 100+ exchanges |
+| Interactive Brokers | External System | ib_insync for traditional markets |
+| Data APIs | External System | On-chain fundamental data |
+| PostgreSQL | Database | Storage for trades, metrics |
 | Web Client | Frontend | Dashboard, Swagger UI |
 
 ---
 
-## 3. Diagrama C3 - Componentes
+## 3. C3 Diagram - Components
 
-### 3.1 Vista General de Componentes
+### 3.1 Component Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────────────┐
@@ -132,8 +132,8 @@ C4Context
 │  ┌─────────────────────────────────────────────────────────────────────────────────┐   │
 │  │                              PRESENTATION LAYER                                  │   │
 │  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────────────┐  │   │
-│  │  │    REST API     │  │   Swagger UI    │  │         CLI Scripts             │  │   │
-│  │  │   (FastAPI)     │  │    /docs        │  │    run_with_strategy.py         │  │   │
+│  │  │    REST API     │  │   WebSocket     │  │         CLI Scripts             │  │   │
+│  │  │   (FastAPI)     │  │     API         │  │    run_with_strategy.py         │  │   │
 │  │  └────────┬────────┘  └────────┬────────┘  └────────────────┬────────────────┘  │   │
 │  └───────────┼────────────────────┼─────────────────────────────┼───────────────────┘   │
 │              │                    │                             │                        │
@@ -143,8 +143,8 @@ C4Context
 │  │  │  Strategy   │  │ Performance │  │  Optimizer  │  │    Unified Executor     │  │   │
 │  │  │  Framework  │  │  Analyzer   │  │             │  │    (Broker Bridge)      │  │   │
 │  │  │             │  │             │  │             │  │                         │  │   │
-│  │  │ strategy.py │  │performance. │  │ optimizer.  │  │ unified_executor.py     │  │   │
-│  │  │             │  │    py       │  │    py       │  │                         │  │   │
+│  │  │ strategy/   │  │performance. │  │ optimizer/  │  │ unified_executor.py     │  │   │
+│  │  │ base.py     │  │    py       │  │             │  │                         │  │   │
 │  │  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └───────────┬─────────────┘  │   │
 │  └─────────┼────────────────┼────────────────┼─────────────────────┼────────────────┘   │
 │            │                │                │                     │                     │
@@ -161,14 +161,23 @@ C4Context
 │  │  │               │  │ - WalkForward │  │   Manager     │  │                   │  │   │
 │  │  └───────────────┘  └───────────────┘  └───────────────┘  └───────────────────┘  │   │
 │  │                                                                                   │   │
-│  │  ┌───────────────┐  ┌───────────────┐  ┌───────────────────────────────────────┐  │   │
-│  │  │    Risk       │  │    Stress     │  │            Broker Bridge              │  │   │
-│  │  │  Management   │  │   Testing     │  │                                       │  │   │
-│  │  │               │  │               │  │  ┌─────────┐  ┌─────────┐  ┌───────┐  │  │   │
-│  │  │ - Sizer       │  │ - MonteCarlo  │  │  │  CCXT   │  │  IBKR   │  │ Paper │  │  │   │
-│  │  │ - Limits      │  │ - Scenario    │  │  │ Adapter │  │ Adapter │  │Trading│  │  │   │
-│  │  │ - Correlation │  │ - Sensitivity │  │  └─────────┘  └─────────┘  └───────┘  │  │   │
-│  │  └───────────────┘  └───────────────┘  └───────────────────────────────────────┘  │   │
+│  │  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐  ┌───────────────────┐  │   │
+│  │  │    Risk       │  │    Stress     │  │     Job       │  │    Interfaces     │  │   │
+│  │  │  Management   │  │   Testing     │  │    Manager    │  │    (Protocols)    │  │   │
+│  │  │               │  │               │  │               │  │                   │  │   │
+│  │  │ - Sizer       │  │ - MonteCarlo  │  │ - Async Jobs  │  │ - IDataValidator  │  │   │
+│  │  │ - Limits      │  │ - Scenario    │  │ - Progress    │  │ - IMetricsCalc    │  │   │
+│  │  │ - Correlation │  │ - Sensitivity │  │ - Scheduling  │  │ - IPositionSizer  │  │   │
+│  │  └───────────────┘  └───────────────┘  └───────────────┘  └───────────────────┘  │   │
+│  │                                                                                   │   │
+│  │  ┌───────────────────────────────────────────────────────────────────────────┐   │   │
+│  │  │                            Broker Bridge                                   │   │   │
+│  │  │                                                                            │   │   │
+│  │  │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────────────┐  │   │   │
+│  │  │  │  CCXT   │  │  IBKR   │  │  Paper  │  │ Symbol  │  │    Fallback     │  │   │   │
+│  │  │  │ Adapter │  │ Adapter │  │ Trading │  │ Router  │  │    Simulator    │  │   │   │
+│  │  │  └─────────┘  └─────────┘  └─────────┘  └─────────┘  └─────────────────┘  │   │   │
+│  │  └───────────────────────────────────────────────────────────────────────────┘   │   │
 │  │                                                                                   │   │
 │  └───────────────────────────────────────────────────────────────────────────────────┘   │
 │                                                                                          │
@@ -183,21 +192,23 @@ C4Context
 └─────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 3.2 Diagrama de Componentes (Mermaid)
+### 3.2 Component Diagram (Mermaid)
 
 ```mermaid
 C4Component
     title Component Diagram - StrategyTrader
 
     Container_Boundary(api, "API Layer") {
-        Component(rest_api, "REST API", "FastAPI", "Endpoints para strategies, trades, performance")
-        Component(swagger, "Swagger UI", "OpenAPI", "Documentacion interactiva")
+        Component(rest_api, "REST API", "FastAPI", "Endpoints for strategies, trades, performance")
+        Component(ws_api, "WebSocket API", "FastAPI", "Real-time streaming")
+        Component(swagger, "Swagger UI", "OpenAPI", "Interactive documentation")
     }
 
     Container_Boundary(core, "Core Components") {
         Component(strategy, "Strategy Framework", "Python", "TradingStrategy ABC, signals, positions")
         Component(performance, "Performance Analyzer", "Python", "30+ metrics, visualization")
         Component(optimizer, "Optimizer", "Python", "Grid, Random, Bayesian, Genetic, WalkForward")
+        Component(job_manager, "Job Manager", "Python", "Async task execution")
     }
 
     Container_Boundary(domain, "Domain Components") {
@@ -206,11 +217,12 @@ C4Component
         Component(portfolio, "Portfolio", "Python", "Allocation, rebalancing, metrics")
         Component(risk, "Risk Management", "Python", "Position sizing, limits, VaR")
         Component(stress, "Stress Testing", "Python", "Monte Carlo, scenarios, sensitivity")
+        Component(interfaces, "Interfaces", "Python", "Protocols and DI container")
     }
 
     Container_Boundary(broker, "Broker Bridge") {
-        Component(unified, "Unified Executor", "Python", "Orquestador multi-broker")
-        Component(router, "Symbol Router", "Python", "Ruteo automatico por activo")
+        Component(unified, "Unified Executor", "Python", "Multi-broker orchestrator")
+        Component(router, "Symbol Router", "Python", "Automatic routing by asset")
         Component(ccxt_adapter, "CCXT Adapter", "Python", "100+ crypto exchanges")
         Component(ibkr_adapter, "IBKR Adapter", "Python", "Stocks, forex, futures")
         Component(fallback, "Fallback Simulator", "Python", "Paper trading fallback")
@@ -223,23 +235,24 @@ C4Component
         Component(db, "SQLAlchemy", "Python", "Database ORM")
     }
 
-    Rel(rest_api, strategy, "Ejecuta")
-    Rel(rest_api, performance, "Calcula metricas")
-    Rel(strategy, indicators, "Usa")
-    Rel(strategy, performance, "Genera datos para")
-    Rel(optimizer, strategy, "Optimiza parametros de")
-    Rel(paper_trading, strategy, "Ejecuta en simulacion")
-    Rel(unified, router, "Consulta ruta")
-    Rel(unified, ccxt_adapter, "Envia ordenes crypto")
-    Rel(unified, ibkr_adapter, "Envia ordenes tradicionales")
-    Rel(unified, fallback, "Fallback para ordenes no soportadas")
-    Rel(ccxt_adapter, ccxt_lib, "Usa")
-    Rel(ibkr_adapter, ibinsync, "Usa")
+    Rel(rest_api, strategy, "Executes")
+    Rel(rest_api, performance, "Calculates metrics")
+    Rel(rest_api, job_manager, "Creates jobs")
+    Rel(strategy, indicators, "Uses")
+    Rel(strategy, performance, "Generates data for")
+    Rel(optimizer, strategy, "Optimizes parameters of")
+    Rel(paper_trading, strategy, "Executes in simulation")
+    Rel(unified, router, "Queries route")
+    Rel(unified, ccxt_adapter, "Sends crypto orders")
+    Rel(unified, ibkr_adapter, "Sends traditional orders")
+    Rel(unified, fallback, "Fallback for unsupported orders")
+    Rel(ccxt_adapter, ccxt_lib, "Uses")
+    Rel(ibkr_adapter, ibinsync, "Uses")
 ```
 
-### 3.3 Componentes Detallados
+### 3.3 Detailed Components
 
-#### Strategy Framework (`strategy.py`)
+#### Strategy Framework (`strategy/base.py`)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -287,18 +300,6 @@ C4Component
 │  └──────────────────┘  │ take_profit    │  │ commission_pct │   │
 │                        │ position_type  │  └────────────────┘   │
 │                        └────────────────┘                        │
-│                                                                  │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │              TechnicalIndicators (static)                │    │
-│  ├─────────────────────────────────────────────────────────┤    │
-│  │ + sma(data, period) -> Series                            │    │
-│  │ + ema(data, period) -> Series                            │    │
-│  │ + rsi(data, period=14) -> Series                         │    │
-│  │ + macd(data, fast, slow, signal) -> Tuple                │    │
-│  │ + bollinger_bands(data, period, std) -> Tuple            │    │
-│  │ + atr(high, low, close, period) -> Series                │    │
-│  │ + stochastic(high, low, close, period) -> Tuple          │    │
-│  └─────────────────────────────────────────────────────────┘    │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -433,67 +434,67 @@ C4Component
 
 ---
 
-## 4. Arquitectura por Modulo
+## 4. Module Architecture
 
 ### 4.1 Indicators Module
 
 ```
 indicators/
-├── base.py                    # Protocolos e interfaces base
-│   ├── IndicatorProtocol      # Protocol para funciones de indicadores
-│   └── IndicatorResult        # Clase base para resultados multi-valor
+├── base.py                    # Protocols and base interfaces
+│   ├── IndicatorProtocol      # Protocol for indicator functions
+│   └── IndicatorResult        # Base class for multi-value results
 │
-├── technical/                 # Indicadores tecnicos
+├── technical/                 # Technical indicators
 │   ├── momentum.py            # RSI, MACD, Stochastic, KDJ, CCI, Williams%R
 │   ├── trend.py               # SMA, EMA, DEMA, TEMA, ADX, TRIX, Supertrend
 │   ├── volatility.py          # Bollinger, ATR, Keltner, Donchian
 │   ├── volume.py              # OBV, VWAP, MFI, ADL
 │   ├── pivots.py              # Pivot Points, Fibonacci, S/R
-│   └── ichimoku.py            # Ichimoku Cloud completo
+│   └── ichimoku.py            # Complete Ichimoku Cloud
 │
-├── fundamental/               # Datos fundamentales
-│   ├── base_client.py         # Cliente API base abstracto
+├── fundamental/               # Fundamental data
+│   ├── base_client.py         # Abstract base API client
 │   ├── coingecko.py           # Market cap, volume, dominance
-│   ├── glassnode.py           # Metricas on-chain
-│   ├── defillama.py           # TVL, protocolos DeFi
+│   ├── glassnode.py           # On-chain metrics
+│   ├── defillama.py           # TVL, DeFi protocols
 │   ├── alternative_me.py      # Fear & Greed Index
-│   └── santiment.py           # Metricas sociales
+│   └── santiment.py           # Social metrics
 │
 └── utils/
-    ├── cache.py               # Cache de datos
-    └── validators.py          # Validacion de inputs
+    ├── cache.py               # Data cache
+    └── validators.py          # Input validation
 ```
 
 ### 4.2 Optimizers Module
 
 ```
 optimizers/
-├── grid_search.py             # Busqueda exhaustiva
-├── random_search.py           # Busqueda aleatoria
-├── bayesian.py                # Optimizacion Bayesiana (GP)
-├── genetic.py                 # Algoritmo genetico
+├── grid_search.py             # Exhaustive search
+├── random_search.py           # Random search
+├── bayesian.py                # Bayesian optimization (GP)
+├── genetic.py                 # Genetic algorithm
 ├── walk_forward.py            # Walk-forward analysis
-├── optimization_types.py      # Tipos y configuraciones
+├── optimization_types.py      # Types and configurations
 │
-├── validation/                # Validacion cruzada
+├── validation/                # Cross-validation
 │   ├── splitters.py           # TimeSeriesSplit, RollingWindow, PurgedKFold
-│   ├── time_series_cv.py      # Cross-validation temporal
-│   ├── purged_kfold.py        # K-Fold con purga de datos
-│   └── results.py             # Modelos de resultados
+│   ├── time_series_cv.py      # Temporal cross-validation
+│   ├── purged_kfold.py        # K-Fold with data purge
+│   └── results.py             # Result models
 │
-└── analysis/                  # Analisis post-optimizacion
-    ├── overfitting_detection.py  # Deteccion de sobreajuste IS/OOS
-    ├── parameter_stability.py    # Estabilidad de parametros
-    └── visualization.py          # Graficos 3D, convergencia
+└── analysis/                  # Post-optimization analysis
+    ├── overfitting_detection.py  # IS/OOS overfitting detection
+    ├── parameter_stability.py    # Parameter stability
+    └── visualization.py          # 3D plots, convergence
 ```
 
 ### 4.3 Portfolio Module
 
 ```
 portfolio/
-├── portfolio_manager.py       # Orquestador principal
+├── portfolio_manager.py       # Main orchestrator
 ├── models.py                  # PortfolioConfig, PortfolioState, PortfolioResult
-├── allocator.py               # Metodos de asignacion
+├── allocator.py               # Allocation methods
 │   ├── equal_weight()
 │   ├── market_cap_weight()
 │   ├── risk_parity()
@@ -501,31 +502,31 @@ portfolio/
 │   ├── minimum_variance()
 │   ├── maximum_sharpe()
 │   └── hierarchical_risk_parity()
-├── rebalancer.py              # Estrategias de rebalanceo
-│   ├── by_frequency()         # Diario, semanal, mensual
-│   ├── by_threshold()         # Por drift de asignacion
-│   └── by_volatility()        # Por volatilidad objetivo
-├── backtester.py              # Backtesting de portafolio
-└── metrics.py                 # Metricas de portafolio
+├── rebalancer.py              # Rebalancing strategies
+│   ├── by_frequency()         # Daily, weekly, monthly
+│   ├── by_threshold()         # By allocation drift
+│   └── by_volatility()        # By target volatility
+├── backtester.py              # Portfolio backtesting
+└── metrics.py                 # Portfolio metrics
 ```
 
 ### 4.4 Risk Management Module
 
 ```
 risk_management/
-├── risk_manager.py            # Orquestador principal
+├── risk_manager.py            # Main orchestrator
 ├── models.py                  # TradeRiskAssessment, RiskState
 ├── config.py                  # RiskConfig
-├── position_sizer.py          # Dimensionamiento de posiciones
-│   ├── fixed_fractional()     # % fijo del capital
-│   ├── kelly_criterion()      # Kelly optimo
+├── position_sizer.py          # Position sizing
+│   ├── fixed_fractional()     # Fixed % of capital
+│   ├── kelly_criterion()      # Optimal Kelly
 │   └── optimal_f()            # Optimal-f
-├── risk_limits.py             # Limites de riesgo
+├── risk_limits.py             # Risk limits
 │   ├── daily_loss_limit
 │   ├── drawdown_protection
 │   ├── position_limits
 │   └── exposure_limits
-└── correlation_manager.py     # Gestion de correlacion
+└── correlation_manager.py     # Correlation management
     ├── track_correlations()
     ├── detect_regime_change()
     └── cluster_analysis()
@@ -535,27 +536,87 @@ risk_management/
 
 ```
 stress_testing/
-├── stress_tester.py           # Orquestador principal
+├── stress_tester.py           # Main orchestrator
 ├── models.py                  # StressTestConfig, StressTestReport
-├── monte_carlo.py             # Simulacion Monte Carlo
-│   ├── simulate_paths()       # Generacion de paths
+├── monte_carlo.py             # Monte Carlo simulation
+│   ├── simulate_paths()       # Path generation
 │   ├── bootstrap()            # Bootstrap resampling
 │   └── gbm_simulation()       # Geometric Brownian Motion
-├── scenario_analysis.py       # Analisis de escenarios
+├── scenario_analysis.py       # Scenario analysis
 │   ├── bull_market()
 │   ├── bear_market()
 │   ├── crash()
 │   └── volatility_shock()
-└── sensitivity.py             # Analisis de sensibilidad
+└── sensitivity.py             # Sensitivity analysis
     ├── single_variable()
     └── multi_variable()
 ```
 
+### 4.6 Job Manager Module
+
+```
+job_manager/
+├── job_manager.py             # Main job manager
+│   ├── JobManager             # Singleton job manager
+│   ├── create_job()           # Create new job
+│   ├── get_job()              # Get job by ID
+│   ├── cancel_job()           # Cancel running job
+│   └── list_jobs()            # List all jobs
+├── models.py                  # Job models
+│   ├── JobType                # BACKTEST, OPTIMIZATION, DATA_EXTRACTION
+│   ├── JobStatus              # QUEUED, RUNNING, COMPLETED, FAILED, CANCELLED
+│   ├── JobProgress            # Progress tracking
+│   └── JobResult              # Job result container
+└── executor.py                # Async job execution
+```
+
+### 4.7 Interfaces Module
+
+```
+interfaces/
+├── protocols.py               # Protocol definitions
+│   ├── IDataValidator         # Data validation protocol
+│   ├── IMetricsCalculator     # Metrics calculation protocol
+│   ├── IPositionSizer         # Position sizing protocol
+│   ├── IRiskManager           # Risk management protocol
+│   ├── IOptimizer             # Optimization protocol
+│   └── IPerformanceAnalyzer   # Performance analysis protocol
+├── container.py               # Dependency injection container
+│   ├── DependencyContainer    # Service container
+│   ├── register()             # Register service
+│   ├── resolve()              # Resolve dependency
+│   └── get_container()        # Get singleton container
+└── implementations/           # Default implementations
+    ├── data_validator.py
+    ├── metrics_calculator.py
+    └── position_sizer.py
+```
+
+### 4.8 API Modules
+
+```
+api_modules/
+├── data_service.py            # Data services
+│   ├── DataService            # OHLCV data management
+│   ├── load_data()            # Load from file
+│   ├── fetch_data()           # Fetch from exchange
+│   └── validate_data()        # Data validation
+├── strategy_registry.py       # Strategy registration
+│   ├── StrategyRegistry       # Strategy container
+│   ├── register()             # Register strategy
+│   ├── get()                  # Get strategy by ID
+│   └── list_all()             # List all strategies
+└── session_manager.py         # Session management
+    ├── SessionManager         # Trading session manager
+    ├── create_session()       # Create new session
+    └── get_session()          # Get session by ID
+```
+
 ---
 
-## 5. Flujos de Datos
+## 5. Data Flows
 
-### 5.1 Flujo de Backtest
+### 5.1 Backtest Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -625,7 +686,7 @@ stress_testing/
                                                └───────────────────┘
 ```
 
-### 5.2 Flujo de Optimizacion
+### 5.2 Optimization Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -706,7 +767,7 @@ stress_testing/
      └───────────────────┘
 ```
 
-### 5.3 Flujo de Ejecucion Multi-Broker
+### 5.3 Multi-Broker Execution Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -777,24 +838,26 @@ stress_testing/
 
 ---
 
-## 6. Patrones de Diseno
+## 6. Design Patterns
 
-### 6.1 Patrones Utilizados
+### 6.1 Patterns Used
 
-| Patron | Uso en Trad-Loop | Ejemplo |
-|--------|------------------|---------|
-| **Strategy** | Algoritmos intercambiables | TradingStrategy, Optimizers |
-| **Adapter** | Integracion con sistemas externos | CCXTBroker, IBKRBroker |
-| **Factory** | Creacion de objetos | ParameterSpace, Contract creation |
-| **Template Method** | Algoritmo con pasos variables | TradingStrategy.backtest() |
-| **Observer** | Notificacion de eventos | RealtimeStrategy callbacks |
-| **Facade** | Interfaz simplificada | PortfolioManager, RiskManager |
-| **Decorator** | Funcionalidad adicional | Performance wrapping |
-| **Repository** | Abstraccion de datos | MarketRepository |
-| **Composite** | Estructuras jerarquicas | CompositeOrder, MultiLegOrder |
-| **Chain of Responsibility** | Procesamiento en cadena | Order validation pipeline |
+| Pattern | Usage in Trad-Loop | Example |
+|---------|-------------------|---------|
+| **Strategy** | Interchangeable algorithms | TradingStrategy, Optimizers |
+| **Adapter** | External system integration | CCXTBroker, IBKRBroker |
+| **Factory** | Object creation | ParameterSpace, Contract creation |
+| **Template Method** | Algorithm with variable steps | TradingStrategy.backtest() |
+| **Observer** | Event notification | RealtimeStrategy callbacks |
+| **Facade** | Simplified interface | PortfolioManager, RiskManager |
+| **Decorator** | Additional functionality | Performance wrapping |
+| **Repository** | Data abstraction | MarketRepository |
+| **Composite** | Hierarchical structures | CompositeOrder, MultiLegOrder |
+| **Chain of Responsibility** | Chained processing | Order validation pipeline |
+| **Protocol** | Interface contracts | IDataValidator, IRiskManager |
+| **Singleton** | Single instance | JobManager, DependencyContainer |
 
-### 6.2 Diagrama de Patrones
+### 6.2 Pattern Diagrams
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -860,34 +923,34 @@ OBSERVER PATTERN                    COMPOSITE PATTERN
 
 ---
 
-## 7. Dependencias Externas
+## 7. External Dependencies
 
-### 7.1 Dependencias Principales
+### 7.1 Main Dependencies
 
-| Categoria | Paquete | Version | Uso |
-|-----------|---------|---------|-----|
-| **Data** | pandas | 2.2.0 | DataFrames, series temporales |
-| | numpy | 1.26.4 | Calculos numericos |
-| | scipy | 1.12.0 | Estadisticas, optimizacion |
-| **ML** | scikit-learn | 1.7.2 | Cross-validation, metricas |
-| | scikit-optimize | 0.10.2 | Optimizacion Bayesiana |
+| Category | Package | Version | Usage |
+|----------|---------|---------|-------|
+| **Data** | pandas | 2.2.0 | DataFrames, time series |
+| | numpy | 1.26.4 | Numerical calculations |
+| | scipy | 1.12.0 | Statistics, optimization |
+| **ML** | scikit-learn | 1.7.2 | Cross-validation, metrics |
+| | scikit-optimize | 0.10.2 | Bayesian optimization |
 | **Exchanges** | ccxt | latest | 100+ crypto exchanges |
-| | python-binance | 1.0.34 | Binance especifico |
+| | python-binance | 1.0.34 | Binance specific |
 | | ib_insync | 0.9.86 | Interactive Brokers |
 | **Web** | fastapi | 0.109.0 | REST API |
 | | uvicorn | 0.27.0 | ASGI server |
-| **Viz** | matplotlib | 3.10.8 | Graficos |
-| | seaborn | 0.13.2 | Visualizacion estadistica |
-| | mplfinance | 0.12.10b0 | Graficos financieros |
+| | websockets | 15.0.1 | WebSocket support |
+| **Viz** | matplotlib | 3.10.8 | Charts |
+| | seaborn | 0.13.2 | Statistical visualization |
+| | mplfinance | 0.12.10b0 | Financial charts |
 | **DB** | sqlalchemy | 2.0.25 | ORM |
 | | psycopg2-binary | 2.9.9 | PostgreSQL |
-| **Async** | aiohttp | 3.13.3 | HTTP async |
-| | websockets | 15.0.1 | WebSocket client |
+| **Async** | aiohttp | 3.13.3 | Async HTTP |
 | **Testing** | pytest | 7.4.4 | Test framework |
-| | pytest-asyncio | 0.23.3 | Tests async |
-| **Validation** | pydantic | 2.5.3 | Validacion de datos |
+| | pytest-asyncio | 0.23.3 | Async tests |
+| **Validation** | pydantic | 2.5.3 | Data validation |
 
-### 7.2 Diagrama de Dependencias
+### 7.2 Dependency Diagram
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -934,21 +997,21 @@ OBSERVER PATTERN                    COMPOSITE PATTERN
 
 ---
 
-## 8. Estructura de Tests
+## 8. Test Structure
 
-### 8.1 Organizacion de Tests
+### 8.1 Test Organization
 
 ```
 tests/
-├── conftest.py                    # Fixtures globales
-├── test_strategy.py               # Tests de estrategia base
-├── test_performance.py            # Tests de performance analyzer
-├── test_optimizer.py              # Tests de optimizador
+├── conftest.py                    # Global fixtures
+├── test_strategy.py               # Base strategy tests
+├── test_performance.py            # Performance analyzer tests
+├── test_optimizer.py              # Optimizer tests
 │
 ├── indicators/
-│   ├── conftest.py               # Fixtures de indicadores
-│   ├── test_integration.py       # Tests de integracion
-│   ├── test_backward_compat.py   # Compatibilidad hacia atras
+│   ├── conftest.py               # Indicator fixtures
+│   ├── test_integration.py       # Integration tests
+│   ├── test_backward_compat.py   # Backward compatibility
 │   ├── technical/
 │   │   ├── test_momentum.py
 │   │   ├── test_trend.py
@@ -1004,40 +1067,40 @@ tests/
 │   ├── test_sensitivity.py
 │   └── test_stress_tester.py
 │
-└── broker_bridge/                 # En src/broker_bridge/tests/
+└── broker_bridge/                 # In src/broker_bridge/tests/
     ├── conftest.py
     ├── test_ccxt_broker.py
     ├── test_symbol_router.py
     └── test_unified_executor.py
 ```
 
-### 8.2 Comandos de Test
+### 8.2 Test Commands
 
 ```bash
-# Ejecutar todos los tests
+# Run all tests
 pytest
 
-# Con coverage
+# With coverage
 pytest --cov=src --cov-report=html
 
-# Tests especificos
+# Specific tests
 pytest tests/test_strategy.py -v
 pytest tests/indicators/ -v
 pytest src/broker_bridge/tests/ -v
 
-# Por marca
+# By marker
 pytest -m "not slow"
 pytest -m "integration"
 
-# Verbose con detalles
+# Verbose with details
 pytest -v --tb=short
 ```
 
-### 8.3 Metricas de Cobertura
+### 8.3 Coverage Metrics
 
-| Modulo | Cobertura Estimada |
+| Module | Estimated Coverage |
 |--------|-------------------|
-| strategy.py | 85%+ |
+| strategy/ | 85%+ |
 | performance.py | 90%+ |
 | broker_bridge | 95%+ |
 | paper_trading | 90%+ |
@@ -1049,14 +1112,14 @@ pytest -v --tb=short
 
 ---
 
-## Apendice A: Glosario Tecnico
+## Appendix A: Technical Glossary
 
-| Termino | Definicion |
-|---------|------------|
-| **ABC** | Abstract Base Class - Clase base abstracta |
+| Term | Definition |
+|------|------------|
+| **ABC** | Abstract Base Class |
 | **CCXT** | CryptoCurrency eXchange Trading Library |
 | **IBKR** | Interactive Brokers |
-| **IS/OOS** | In-Sample / Out-of-Sample (datos de entrenamiento/prueba) |
+| **IS/OOS** | In-Sample / Out-of-Sample (training/test data) |
 | **OHLCV** | Open, High, Low, Close, Volume |
 | **SL/TP** | Stop Loss / Take Profit |
 | **TWAP** | Time Weighted Average Price |
@@ -1065,10 +1128,11 @@ pytest -v --tb=short
 | **CVaR** | Conditional Value at Risk |
 | **MVO** | Mean-Variance Optimization |
 | **HRP** | Hierarchical Risk Parity |
+| **DI** | Dependency Injection |
 
 ---
 
-## Apendice B: Referencias
+## Appendix B: References
 
 - [CCXT Documentation](https://docs.ccxt.com/)
 - [ib_insync Documentation](https://ib-insync.readthedocs.io/)

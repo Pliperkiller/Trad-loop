@@ -50,8 +50,10 @@ class CCXTAdapter(IMarketRepository):
         # Build exchange config
         config = {
             "enableRateLimit": True,  # Automatic rate limiting
-            "rateLimit": 1000,  # Default 1 request per second
+            # Usar rate limit nativo del exchange (50ms para Binance)
+            # en lugar de 1000ms que era excesivamente conservador
         }
+        self._markets_loaded = False  # Cache para evitar load_markets() repetidos
 
         if api_credentials:
             config.update(api_credentials)
@@ -87,8 +89,10 @@ class CCXTAdapter(IMarketRepository):
             DataFrame with columns: timestamp, open, high, low, close, volume
         """
         try:
-            # Load markets
-            self.exchange.load_markets()
+            # Load markets (solo una vez, cacheado)
+            if not self._markets_loaded:
+                self.exchange.load_markets()
+                self._markets_loaded = True
 
             # Validate symbol
             if symbol not in self.exchange.symbols:

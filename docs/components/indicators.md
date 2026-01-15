@@ -1,34 +1,32 @@
-# Indicadores - Manual de Componente
+# Indicators
 
-## Descripcion
+The **indicators** module provides a comprehensive collection of technical and fundamental indicators for market analysis.
 
-El modulo **indicators** proporciona una coleccion completa de indicadores tecnicos y fundamentales para analisis de mercado.
-
-## Arquitectura
+## Architecture
 
 ```
 indicators/
-├── base.py                # Clases base y protocolos
-├── technical/             # Indicadores tecnicos
+├── base.py                # Base classes and protocols
+├── technical/             # Technical indicators
 │   ├── momentum.py        # RSI, MACD, Stochastic, etc.
 │   ├── trend.py           # SMA, EMA, ADX, Supertrend
 │   ├── volatility.py      # Bollinger, ATR, Keltner
 │   ├── volume.py          # OBV, VWAP, MFI
 │   ├── pivots.py          # Pivot Points, Fibonacci
 │   └── ichimoku.py        # Ichimoku Cloud
-├── fundamental/           # Datos fundamentales
-│   ├── base_client.py     # Cliente API base
+├── fundamental/           # Fundamental data
+│   ├── base_client.py     # Base API client
 │   ├── coingecko.py       # CoinGecko
 │   ├── glassnode.py       # Glassnode
 │   ├── defillama.py       # DeFi Llama
 │   ├── alternative_me.py  # Fear & Greed
 │   └── santiment.py       # Santiment
 └── utils/
-    ├── cache.py           # Cache de datos
-    └── validators.py      # Validacion
+    ├── cache.py           # Data cache
+    └── validators.py      # Validation
 ```
 
-## Indicadores Tecnicos
+## Technical Indicators
 
 ### Momentum
 
@@ -46,7 +44,7 @@ macd_result = momentum.macd(close, fast=12, slow=26, signal=9)
 stoch = momentum.stochastic(high, low, close, k_period=14, d_period=3)
 # stoch.k, stoch.d
 
-# KDJ (variante asiatica del Stochastic)
+# KDJ (Asian variant of Stochastic)
 kdj = momentum.kdj(high, low, close, period=9)
 # kdj.k, kdj.d, kdj.j
 
@@ -68,7 +66,7 @@ mom = momentum.momentum(close, period=10)
 ```python
 from src.indicators.technical import trend
 
-# Medias Moviles
+# Moving Averages
 sma = trend.sma(close, period=20)
 ema = trend.ema(close, period=20)
 dema = trend.dema(close, period=20)  # Double EMA
@@ -94,7 +92,7 @@ aroon = trend.aroon(high, low, period=25)
 # aroon.up, aroon.down, aroon.oscillator
 ```
 
-### Volatilidad
+### Volatility
 
 ```python
 from src.indicators.technical import volatility
@@ -121,7 +119,7 @@ hvol = volatility.historical_volatility(close, period=20, annualize=True)
 chaikin_vol = volatility.chaikin_volatility(high, low, period=10)
 ```
 
-### Volumen
+### Volume
 
 ```python
 from src.indicators.technical import volume
@@ -144,7 +142,7 @@ cmf = volume.cmf(high, low, close, vol, period=20)
 # Force Index
 force = volume.force_index(close, vol, period=13)
 
-# Volume Profile (agrupado por precio)
+# Volume Profile (grouped by price)
 profile = volume.volume_profile(close, vol, bins=20)
 ```
 
@@ -153,7 +151,7 @@ profile = volume.volume_profile(close, vol, bins=20)
 ```python
 from src.indicators.technical import pivots
 
-# Pivot Points clasicos
+# Classic Pivot Points
 pivot = pivots.pivot_points(high, low, close)
 # pivot.pivot, pivot.r1, pivot.r2, pivot.r3, pivot.s1, pivot.s2, pivot.s3
 
@@ -166,7 +164,7 @@ woodie = pivots.woodie_pivots(high, low, close, open_price)
 # Camarilla Pivot Points
 camarilla = pivots.camarilla_pivots(high, low, close)
 
-# Soporte y Resistencia automaticos
+# Automatic Support and Resistance
 sr_levels = pivots.auto_support_resistance(high, low, close, lookback=100)
 ```
 
@@ -184,27 +182,27 @@ ichimoku = IchimokuCloud(
 
 result = ichimoku.calculate(high, low, close)
 
-# Componentes
+# Components
 tenkan = result.tenkan_sen      # Conversion Line
 kijun = result.kijun_sen        # Base Line
 senkou_a = result.senkou_span_a # Leading Span A
 senkou_b = result.senkou_span_b # Leading Span B
 chikou = result.chikou_span     # Lagging Span
 
-# Senales
-cloud_color = result.cloud_color  # 'green' o 'red'
+# Signals
+cloud_color = result.cloud_color  # 'green' or 'red'
 price_vs_cloud = result.price_position  # 'above', 'below', 'inside'
 tk_cross = result.tk_cross_signal  # 'bullish', 'bearish', None
 ```
 
-## Indicadores Fundamentales
+## Fundamental Indicators
 
 ### CoinGecko
 
 ```python
 from src.indicators.fundamental.coingecko import CoinGeckoClient
 
-client = CoinGeckoClient(api_key="tu_api_key")  # Opcional
+client = CoinGeckoClient(api_key="your_api_key")  # Optional
 
 # Market data
 market_data = await client.get_market_data("bitcoin")
@@ -226,7 +224,7 @@ trending = await client.get_trending()
 ```python
 from src.indicators.fundamental.glassnode import GlassnodeClient
 
-client = GlassnodeClient(api_key="tu_api_key")
+client = GlassnodeClient(api_key="your_api_key")
 
 # On-chain metrics
 sopr = await client.get_sopr("BTC")  # Spent Output Profit Ratio
@@ -251,17 +249,17 @@ from src.indicators.fundamental.defillama import DefiLlamaClient
 
 client = DefiLlamaClient()
 
-# TVL total
+# Total TVL
 tvl = await client.get_total_tvl()
 print(f"Total TVL: ${tvl:,.0f}")
 
-# TVL por protocolo
+# TVL by protocol
 protocol_tvl = await client.get_protocol_tvl("aave")
 
-# TVL por chain
+# TVL by chain
 chain_tvl = await client.get_chain_tvl("ethereum")
 
-# Protocolos
+# Protocols
 protocols = await client.get_protocols()
 ```
 
@@ -272,14 +270,14 @@ from src.indicators.fundamental.alternative_me import AlternativeMeClient
 
 client = AlternativeMeClient()
 
-# Indice actual
+# Current index
 fng = await client.get_fear_greed()
 print(f"Value: {fng['value']}")
 print(f"Classification: {fng['classification']}")
 # 0-25: Extreme Fear, 26-46: Fear, 47-54: Neutral
 # 55-75: Greed, 76-100: Extreme Greed
 
-# Historico
+# Historical
 history = await client.get_fear_greed_history(limit=30)
 ```
 
@@ -288,7 +286,7 @@ history = await client.get_fear_greed_history(limit=30)
 ```python
 from src.indicators.fundamental.santiment import SantimentClient
 
-client = SantimentClient(api_key="tu_api_key")
+client = SantimentClient(api_key="your_api_key")
 
 # Social volume
 social = await client.get_social_volume("bitcoin")
@@ -305,14 +303,14 @@ print(f"Inflow: {flow['inflow']}")
 print(f"Outflow: {flow['outflow']}")
 ```
 
-## Clases Base
+## Base Classes
 
 ### IndicatorResult
 
 ```python
 from src.indicators.base import IndicatorResult
 
-# Los indicadores multi-valor retornan IndicatorResult
+# Multi-value indicators return IndicatorResult
 class BollingerBandsResult(IndicatorResult):
     upper: pd.Series
     middle: pd.Series
@@ -321,27 +319,27 @@ class BollingerBandsResult(IndicatorResult):
     percent_b: pd.Series
 ```
 
-## Cache y Optimizacion
+## Cache and Optimization
 
 ```python
 from src.indicators.utils.cache import IndicatorCache
 
-# Cache automatico para indicadores costosos
+# Automatic cache for expensive indicators
 cache = IndicatorCache(max_size=1000, ttl=3600)
 
 @cache.cached
 def expensive_indicator(data, params):
-    # Calculo costoso
+    # Expensive calculation
     return result
 ```
 
-## Uso con Strategy
+## Usage with Strategy
 
 ```python
 from src.strategy import TradingStrategy
 from src.indicators.technical import momentum, trend, volatility
 
-class MiEstrategia(TradingStrategy):
+class MyStrategy(TradingStrategy):
     def calculate_indicators(self):
         # Momentum
         self.data['rsi'] = momentum.rsi(self.data['close'], 14)
@@ -369,7 +367,7 @@ class MiEstrategia(TradingStrategy):
         for i in range(len(self.data)):
             row = self.data.iloc[i]
 
-            # Condiciones de compra
+            # Buy conditions
             if (row['rsi'] < 30 and
                 row['macd'] > row['macd_signal'] and
                 row['close'] < row['bb_lower'] and
@@ -379,12 +377,40 @@ class MiEstrategia(TradingStrategy):
                     signal='BUY',
                     confidence=0.9
                 ))
-            # ... mas condiciones
+            # ... more conditions
         return signals
 ```
+
+## API Reference
+
+### Technical Indicators
+
+| Module | Indicators |
+|--------|------------|
+| `momentum` | RSI, MACD, Stochastic, KDJ, CCI, Williams %R, ROC |
+| `trend` | SMA, EMA, DEMA, TEMA, WMA, ADX, TRIX, Supertrend, Parabolic SAR, Aroon |
+| `volatility` | Bollinger Bands, ATR, Keltner Channels, Donchian Channels, Historical Volatility |
+| `volume` | OBV, VWAP, MFI, ADL, CMF, Force Index, Volume Profile |
+| `pivots` | Classic, Fibonacci, Woodie, Camarilla, Auto S/R |
+| `ichimoku` | Full Ichimoku Cloud with all components and signals |
+
+### Fundamental Data Clients
+
+| Client | Data |
+|--------|------|
+| `CoinGeckoClient` | Market cap, volume, dominance, trending |
+| `GlassnodeClient` | On-chain metrics (SOPR, NUPL, MVRV), supply, addresses |
+| `DefiLlamaClient` | TVL by protocol and chain |
+| `AlternativeMeClient` | Fear & Greed Index |
+| `SantimentClient` | Social volume, dev activity, exchange flow |
 
 ## Tests
 
 ```bash
 pytest tests/indicators/ -v
 ```
+
+## Related Documentation
+
+- [Optimizers](optimizers.md) - Parameter optimization
+- [Strategy Development](../user_guide.md#strategy-development) - Using indicators in strategies

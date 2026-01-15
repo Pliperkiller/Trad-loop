@@ -1,10 +1,8 @@
-# Broker Bridge - Manual de Componente
+# Broker Bridge
 
-## Descripcion
+The **broker_bridge** module provides a unified abstraction layer for trading with multiple brokers (crypto and traditional) through a common interface.
 
-El modulo **broker_bridge** proporciona una capa de abstraccion unificada para operar con multiples brokers (crypto y tradicionales) a traves de una interfaz comun.
-
-## Arquitectura
+## Architecture
 
 ```
 broker_bridge/
@@ -12,19 +10,19 @@ broker_bridge/
 │   ├── enums.py         # BrokerType, AssetClass, OrderType, OrderSide
 │   ├── models.py        # BrokerOrder, BrokerPosition, ExecutionReport
 │   ├── interfaces.py    # IBrokerAdapter (ABC)
-│   └── exceptions.py    # Excepciones personalizadas
+│   └── exceptions.py    # Custom exceptions
 ├── adapters/
-│   ├── ccxt/            # Adaptador para 100+ exchanges crypto
-│   └── ibkr/            # Adaptador para Interactive Brokers
+│   ├── ccxt/            # Adapter for 100+ crypto exchanges
+│   └── ibkr/            # Adapter for Interactive Brokers
 └── execution/
-    ├── unified_executor.py   # Orquestador principal
-    ├── symbol_router.py      # Ruteo automatico por simbolo
-    └── fallback_simulator.py # Simulacion para ordenes no soportadas
+    ├── unified_executor.py   # Main orchestrator
+    ├── symbol_router.py      # Automatic routing by symbol
+    └── fallback_simulator.py # Simulation for unsupported orders
 ```
 
-## Uso Basico
+## Basic Usage
 
-### Inicializacion
+### Initialization
 
 ```python
 from src.broker_bridge import (
@@ -36,21 +34,21 @@ from src.broker_bridge import (
     OrderType
 )
 
-# Crear executor
+# Create executor
 executor = UnifiedExecutor()
 
-# Registrar brokers
+# Register brokers
 executor.register_broker(CCXTBroker("binance", "api_key", "api_secret"))
 executor.register_broker(IBKRBroker(port=7497))
 
-# Conectar
+# Connect
 await executor.connect_all()
 ```
 
-### Enviar Ordenes
+### Submit Orders
 
 ```python
-# Orden crypto (auto-ruteada a CCXT)
+# Crypto order (auto-routed to CCXT)
 order = BrokerOrder(
     symbol="BTC/USDT",
     side=OrderSide.BUY,
@@ -60,7 +58,7 @@ order = BrokerOrder(
 )
 report = await executor.submit_order(order)
 
-# Orden stock (auto-ruteada a IBKR)
+# Stock order (auto-routed to IBKR)
 order = BrokerOrder(
     symbol="AAPL",
     side=OrderSide.BUY,
@@ -70,12 +68,12 @@ order = BrokerOrder(
 report = await executor.submit_order(order)
 ```
 
-## Ruteo Automatico
+## Automatic Routing
 
-El `SymbolRouter` determina automaticamente el broker apropiado:
+The `SymbolRouter` automatically determines the appropriate broker:
 
-| Patron | Broker | Asset Class |
-|--------|--------|-------------|
+| Pattern | Broker | Asset Class |
+|---------|--------|-------------|
 | `BTC/USDT`, `ETH/BTC` | CCXT | CRYPTO |
 | `EUR/USD`, `GBP/JPY` | IBKR | FOREX |
 | `AAPL`, `MSFT` | IBKR | STOCK |
@@ -83,47 +81,47 @@ El `SymbolRouter` determina automaticamente el broker apropiado:
 | `ES2403`, `NQM24` | IBKR | FUTURES |
 | `AAPL240315C00175000` | IBKR | OPTIONS |
 
-### Personalizar Ruteo
+### Customize Routing
 
 ```python
 router = executor.get_router()
 
-# Agregar patron crypto
+# Add crypto pattern
 router.add_crypto_pattern(r"^MY_TOKEN.*$")
 
-# Agregar moneda forex
+# Add forex currency
 router.add_forex_currency("MXN")
 
-# Override manual
+# Manual override
 router.set_override("SPECIAL", BrokerType.PAPER, AssetClass.STOCK)
 ```
 
-## Tipos de Orden Soportados
+## Supported Order Types
 
 ```python
 from src.broker_bridge.core.enums import OrderType
 
-# Basicos
+# Basic
 OrderType.MARKET
 OrderType.LIMIT
 OrderType.STOP_LOSS
 OrderType.STOP_LIMIT
 
-# Avanzados
+# Advanced
 OrderType.TRAILING_STOP
 OrderType.BRACKET
 OrderType.OCO
 OrderType.ICEBERG
 
-# Algoritmicos
+# Algorithmic
 OrderType.TWAP
 OrderType.VWAP
 ```
 
-## Capacidades por Broker
+## Broker Capabilities
 
 ```python
-# Verificar capacidades
+# Check capabilities
 ccxt = executor.get_broker(BrokerType.CCXT)
 caps = ccxt.get_capabilities()
 
@@ -132,7 +130,7 @@ print(f"OCO: {caps.supports_oco}")
 print(f"Bracket: {caps.supports_bracket}")
 ```
 
-### Capacidades CCXT por Exchange
+### CCXT Capabilities by Exchange
 
 | Exchange | Trailing | OCO | Bracket | Iceberg |
 |----------|----------|-----|---------|---------|
@@ -143,36 +141,36 @@ print(f"Bracket: {caps.supports_bracket}")
 
 ## CCXT Broker
 
-### Configuracion
+### Configuration
 
 ```python
 from src.broker_bridge.adapters.ccxt import CCXTBroker
 
 broker = CCXTBroker(
-    exchange_id="binance",      # ID del exchange
-    api_key="tu_api_key",
-    api_secret="tu_api_secret",
-    testnet=True,               # Usar testnet
-    sandbox=False,              # Modo sandbox
-    options={                   # Opciones adicionales
+    exchange_id="binance",      # Exchange ID
+    api_key="your_api_key",
+    api_secret="your_api_secret",
+    testnet=True,               # Use testnet
+    sandbox=False,              # Sandbox mode
+    options={                   # Additional options
         'defaultType': 'spot',  # 'spot', 'future', 'margin'
         'adjustForTimeDifference': True
     }
 )
 ```
 
-### Exchanges Soportados
+### Supported Exchanges
 
 ```python
 import ccxt
-print(ccxt.exchanges)  # Lista de 100+ exchanges
+print(ccxt.exchanges)  # List of 100+ exchanges
 ```
 
-Principales: binance, bybit, okx, kraken, kucoin, coinbase, huobi, gate, bitget
+Main: binance, bybit, okx, kraken, kucoin, coinbase, huobi, gate, bitget
 
 ## IBKR Broker
 
-### Configuracion
+### Configuration
 
 ```python
 from src.broker_bridge.adapters.ibkr import IBKRBroker
@@ -185,11 +183,11 @@ broker = IBKRBroker(
 )
 ```
 
-### Tipos de Contrato
+### Contract Types
 
 ```python
-# El broker detecta automaticamente el tipo de contrato
-# basado en el formato del simbolo:
+# The broker automatically detects contract type
+# based on symbol format:
 
 # Stock
 order = BrokerOrder(symbol="AAPL", ...)
@@ -197,16 +195,16 @@ order = BrokerOrder(symbol="AAPL", ...)
 # Forex
 order = BrokerOrder(symbol="EUR/USD", ...)
 
-# Futures (formato: ROOT + YYYYMM o ROOT + MONTHCODE + YY)
-order = BrokerOrder(symbol="ES2403", ...)  # Marzo 2024
-order = BrokerOrder(symbol="ESH24", ...)   # Marzo 2024
+# Futures (format: ROOT + YYYYMM or ROOT + MONTHCODE + YY)
+order = BrokerOrder(symbol="ES2403", ...)  # March 2024
+order = BrokerOrder(symbol="ESH24", ...)   # March 2024
 
-# Options (formato OCC)
+# Options (OCC format)
 order = BrokerOrder(symbol="AAPL240315C00175000", ...)
-# AAPL, 15 Marzo 2024, Call, Strike $175.00
+# AAPL, March 15 2024, Call, Strike $175.00
 ```
 
-## Manejo de Errores
+## Error Handling
 
 ```python
 from src.broker_bridge.core.exceptions import (
@@ -220,30 +218,30 @@ from src.broker_bridge.core.exceptions import (
 try:
     report = await executor.submit_order(order)
 except BrokerNotRegisteredError:
-    print("Broker no registrado")
+    print("Broker not registered")
 except BrokerConnectionError:
-    print("Error de conexion")
+    print("Connection error")
 except InsufficientFundsError as e:
-    print(f"Fondos insuficientes: {e}")
+    print(f"Insufficient funds: {e}")
 except UnsupportedOrderTypeError:
-    print("Tipo de orden no soportado")
+    print("Order type not supported")
 ```
 
 ## Fallback Simulator
 
-Cuando un broker no soporta un tipo de orden, el sistema usa simulacion local:
+When a broker doesn't support an order type, the system uses local simulation:
 
 ```python
-# Si Kraken no soporta trailing stop,
-# el FallbackSimulator lo maneja localmente
+# If Kraken doesn't support trailing stop,
+# the FallbackSimulator handles it locally
 order = BrokerOrder(
     symbol="BTC/USD",
     order_type=OrderType.TRAILING_STOP,
     trail_percent=0.02
 )
 
-# El executor detecta que Kraken no soporta trailing
-# y usa el simulador automaticamente
+# The executor detects Kraken doesn't support trailing
+# and uses the simulator automatically
 report = await executor.submit_order(order, broker_type=BrokerType.CCXT)
 ```
 
@@ -254,45 +252,45 @@ async with UnifiedExecutor() as executor:
     executor.register_broker(ccxt_broker)
     executor.register_broker(ibkr_broker)
 
-    # Conexion automatica
+    # Automatic connection
     await executor.submit_order(order)
 
-# Desconexion automatica
+# Automatic disconnection
 ```
 
 ## API Reference
 
 ### UnifiedExecutor
 
-| Metodo | Descripcion |
+| Method | Description |
 |--------|-------------|
-| `register_broker(broker)` | Registrar un broker |
-| `unregister_broker(broker_type)` | Desregistrar broker |
-| `connect_all()` | Conectar todos los brokers |
-| `disconnect_all()` | Desconectar todos |
-| `submit_order(order, broker_type?)` | Enviar orden |
-| `cancel_order(order_id)` | Cancelar orden |
-| `get_all_positions()` | Posiciones de todos los brokers |
-| `get_all_balances()` | Balances de todos los brokers |
-| `get_ticker(symbol)` | Obtener ticker |
-| `get_orderbook(symbol)` | Obtener order book |
+| `register_broker(broker)` | Register a broker |
+| `unregister_broker(broker_type)` | Unregister broker |
+| `connect_all()` | Connect all brokers |
+| `disconnect_all()` | Disconnect all |
+| `submit_order(order, broker_type?)` | Submit order |
+| `cancel_order(order_id)` | Cancel order |
+| `get_all_positions()` | Positions from all brokers |
+| `get_all_balances()` | Balances from all brokers |
+| `get_ticker(symbol)` | Get ticker |
+| `get_orderbook(symbol)` | Get order book |
 
 ### BrokerOrder
 
-| Campo | Tipo | Descripcion |
+| Field | Type | Description |
 |-------|------|-------------|
-| `symbol` | str | Simbolo del activo |
-| `side` | OrderSide | BUY o SELL |
-| `order_type` | OrderType | Tipo de orden |
-| `quantity` | float | Cantidad |
-| `price` | float? | Precio limite |
-| `stop_price` | float? | Precio de stop |
-| `trail_percent` | float? | % para trailing |
-| `take_profit` | float? | Precio take profit |
-| `stop_loss` | float? | Precio stop loss |
+| `symbol` | str | Asset symbol |
+| `side` | OrderSide | BUY or SELL |
+| `order_type` | OrderType | Order type |
+| `quantity` | float | Quantity |
+| `price` | float? | Limit price |
+| `stop_price` | float? | Stop price |
+| `trail_percent` | float? | % for trailing |
+| `take_profit` | float? | Take profit price |
+| `stop_loss` | float? | Stop loss price |
 | `time_in_force` | TimeInForce | GTC, IOC, FOK |
-| `reduce_only` | bool | Solo reducir posicion |
-| `post_only` | bool | Solo maker |
+| `reduce_only` | bool | Reduce position only |
+| `post_only` | bool | Maker only |
 
 ## Tests
 
@@ -300,4 +298,10 @@ async with UnifiedExecutor() as executor:
 pytest src/broker_bridge/tests/ -v
 ```
 
-Tests disponibles: 76 tests cubriendo todas las funcionalidades.
+Tests available: 76 tests covering all functionality.
+
+## Related Documentation
+
+- [API Reference](api_reference.md) - REST API endpoints
+- [Paper Trading](paper_trading.md) - Simulated trading
+- [Risk Management](risk_management.md) - Risk controls

@@ -18,6 +18,49 @@ from .utils import snap_to_step
 _snap_to_step = snap_to_step
 
 
+class ObjectiveFunction:
+    """
+    Callable class for objective function - picklable for multiprocessing.
+
+    This class encapsulates the objective function state to allow pickle
+    serialization when using scipy's differential_evolution with workers > 1.
+    """
+
+    def __init__(self, optimizer, parameter_space, categorical_params):
+        self.optimizer = optimizer
+        self.parameter_space = parameter_space
+        self.categorical_params = categorical_params
+
+    def __call__(self, x):
+        """Evaluate parameters and return negative score (for minimization)."""
+        if np.any(np.isnan(x)):
+            return float('inf')
+
+        params = {}
+        try:
+            for i, (param, value) in enumerate(zip(self.parameter_space, x)):
+                if param.param_type == 'categorical' and param.name in self.categorical_params:
+                    idx = int(np.clip(round(value), 0, len(self.categorical_params[param.name]) - 1))
+                    params[param.name] = self.categorical_params[param.name][idx]
+                elif param.param_type == 'int':
+                    low = param.low if param.low is not None else 0
+                    high = param.high if param.high is not None else 100
+                    params[param.name] = _snap_to_step(value, low, high, param.step, 'int')
+                else:
+                    low = param.low if param.low is not None else 0
+                    high = param.high if param.high is not None else 1
+                    params[param.name] = _snap_to_step(value, low, high, param.step, 'float')
+        except (ValueError, OverflowError):
+            return float('inf')
+
+        score = self.optimizer._evaluate_parameters(params)
+
+        if np.isnan(score) or np.isinf(score):
+            return float('inf')
+
+        return -score  # Scipy minimiza
+
+
 def genetic_algorithm(self, population_size: int = 20, max_generations: int = 50,
                      mutation: Tuple[float, float] = (0.5, 1.0),
                      recombination: float = 0.7,
@@ -97,56 +140,55 @@ def genetic_algorithm(self, population_size: int = 20, max_generations: int = 50
         else:
             bounds.append((0, 1))
 
-    # Función objetivo con snap to step
+    # Crear función objetivo picklable para multiprocessing
+    objective_func = ObjectiveFunction(self, self.parameter_space, categorical_params)
+
+    # Para tracking de resultados y progress callback
     iteration_results = []
     total_evaluations = (max_generations + 1) * population_size * max(1, len(bounds))
 
-    def objective(x):
-        # Verificar si hay NaN en los valores
-        if np.any(np.isnan(x)):
-            return float('inf')
+    if n_jobs == 1:
+        # Modo secuencial: podemos usar tracking y progress callback
+        def objective_with_tracking(x):
+            result = objective_func(x)
+            if result != float('inf'):
+                # Reconstruir params para guardar en resultados
+                params = {}
+                for param, value in zip(self.parameter_space, x):
+                    if param.param_type == 'categorical' and param.name in categorical_params:
+                        idx = int(np.clip(round(value), 0, len(categorical_params[param.name]) - 1))
+                        params[param.name] = categorical_params[param.name][idx]
+                    elif param.param_type == 'int':
+                        low = param.low if param.low is not None else 0
+                        high = param.high if param.high is not None else 100
+                        params[param.name] = _snap_to_step(value, low, high, param.step, 'int')
+                    else:
+                        low = param.low if param.low is not None else 0
+                        high = param.high if param.high is not None else 1
+                        params[param.name] = _snap_to_step(value, low, high, param.step, 'float')
 
-        params = {}
-        try:
-            for i, (param, value) in enumerate(zip(self.parameter_space, x)):
-                if param.param_type == 'categorical' and param.name in categorical_params:
-                    idx = int(np.clip(round(value), 0, len(categorical_params[param.name]) - 1))
-                    params[param.name] = categorical_params[param.name][idx]
-                elif param.param_type == 'int':
-                    low = param.low if param.low is not None else 0
-                    high = param.high if param.high is not None else 100
-                    # Snap to step grid
-                    params[param.name] = _snap_to_step(value, low, high, param.step, 'int')
-                else:
-                    low = param.low if param.low is not None else 0
-                    high = param.high if param.high is not None else 1
-                    # Snap to step grid
-                    params[param.name] = _snap_to_step(value, low, high, param.step, 'float')
-        except (ValueError, OverflowError):
-            return float('inf')
+                result_dict = params.copy()
+                result_dict['score'] = -result  # result es negativo
+                iteration_results.append(result_dict)
 
-        score = self._evaluate_parameters(params)
+                if progress_callback:
+                    progress_callback(len(iteration_results), total_evaluations)
 
-        # Verificar si el score es válido
-        if np.isnan(score) or np.isinf(score):
-            return float('inf')
+            return result
 
-        # Guardar resultado
-        result_dict = params.copy()
-        result_dict['score'] = score
-        iteration_results.append(result_dict)
+        func_to_use = objective_with_tracking
+    else:
+        # Modo paralelo: usar función picklable directamente
+        # Nota: no hay tracking de resultados intermedios con multiprocessing
+        func_to_use = objective_func
 
-        # Llamar progress_callback en cada evaluación
-        if progress_callback:
-            current_evals = len(iteration_results)
-            progress_callback(current_evals, total_evaluations)
-
-        return -score  # Scipy minimiza
+        if progress_callback and verbose:
+            print("Nota: progress callback deshabilitado en modo paralelo (n_jobs > 1)")
 
     # Ejecutar optimización con paralelización
     # Nota: workers > 1 requiere updating='deferred'
     result = differential_evolution(
-        objective,
+        func_to_use,
         bounds,
         strategy='best1bin',
         maxiter=max_generations,
@@ -160,20 +202,30 @@ def genetic_algorithm(self, population_size: int = 20, max_generations: int = 50
     )
 
     # Procesar mejor resultado con snap to step
+    # Convertir valores numpy a tipos nativos de Python
     best_params = {}
     for i, param in enumerate(self.parameter_space):
+        raw_value = float(result.x[i])  # Convertir numpy a float nativo primero
         if param.param_type == 'categorical' and param.name in categorical_params:
-            best_params[param.name] = categorical_params[param.name][int(round(result.x[i]))]
+            idx = int(round(raw_value))
+            best_params[param.name] = categorical_params[param.name][idx]
         elif param.param_type == 'int':
             low = param.low if param.low is not None else 0
             high = param.high if param.high is not None else 100
-            best_params[param.name] = _snap_to_step(result.x[i], low, high, param.step, 'int')
+            best_params[param.name] = _snap_to_step(raw_value, low, high, param.step, 'int')
         else:
             low = param.low if param.low is not None else 0
             high = param.high if param.high is not None else 1
-            best_params[param.name] = _snap_to_step(result.x[i], low, high, param.step, 'float')
+            best_params[param.name] = _snap_to_step(raw_value, low, high, param.step, 'float')
 
-    best_score = -result.fun
+    # Convertir best_score a float nativo de Python
+    best_score = float(-result.fun)
+
+    # Si n_jobs > 1, iteration_results está vacío, agregar al menos el mejor resultado
+    if not iteration_results:
+        best_result = best_params.copy()
+        best_result['score'] = best_score
+        iteration_results.append(best_result)
 
     results_df = pd.DataFrame(iteration_results)
 

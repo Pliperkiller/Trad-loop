@@ -73,6 +73,12 @@ class PerformanceAnalyzer:
         # Metricas operativas
         metrics.update(self._operational_metrics())
 
+        # Metricas especializadas para mean reversion
+        metrics.update(self._mean_reversion_metrics())
+
+        # Metrica compuesta MRQS (Mean Reversion Quality Score)
+        metrics.update(self._mrqs_metric(metrics))
+
         return metrics
 
     def _profitability_metrics(self) -> Dict:
@@ -286,6 +292,281 @@ class PerformanceAnalyzer:
             'max_consecutive_losses': max_consecutive_losses
         }
 
+    def _mean_reversion_metrics(self) -> Dict:
+        """
+        Metricas especializadas para estrategias de mean reversion.
+        Estas metricas estan optimizadas para estrategias que generan
+        muchos trades con pequenas ganancias y pocas perdidas grandes.
+        """
+        default_metrics = {
+            'adjusted_profit_factor': 0.0,
+            'expectancy_per_trade': 0.0,
+            'omega_ratio_zero': 0.0,
+            'mean_reversion_score': 0.0,
+            'mean_reversion_optimization_target': 0.0,
+            'worst_trade_pct': 0.0
+        }
+
+        if len(self.trades) == 0:
+            return default_metrics
+
+        try:
+            # Obtener retornos como numpy array
+            if 'return_pct' in self.trades.columns:
+                trade_returns = np.array(self.trades['return_pct'].values, dtype=float)
+            else:
+                if self.initial_capital > 0:
+                    trade_returns = np.array(self.trades['pnl'].values, dtype=float) / self.initial_capital * 100
+                else:
+                    return default_metrics
+
+            # Filtrar NaN e Inf
+            trade_returns = trade_returns[~np.isnan(trade_returns) & ~np.isinf(trade_returns)]
+
+            if len(trade_returns) == 0:
+                return default_metrics
+
+            num_trades = len(trade_returns)
+
+            # --- Adjusted Profit Factor ---
+            gains = float(np.sum(trade_returns[trade_returns > 0]))
+            losses = float(np.abs(np.sum(trade_returns[trade_returns < 0])))
+
+            if losses > 0:
+                base_pf = gains / losses
+            else:
+                base_pf = 10.0 if gains > 0 else 0.0  # Cap at 10 instead of inf
+
+            # Bonus por consistencia (muchos trades)
+            consistency_bonus = min(num_trades / 200.0, 1.2)
+            adjusted_profit_factor = base_pf * consistency_bonus
+
+            # --- Expectancy per Trade ---
+            winners = trade_returns[trade_returns > 0]
+            losers = trade_returns[trade_returns < 0]
+
+            win_rate = len(winners) / num_trades if num_trades > 0 else 0.0
+            avg_win = float(np.mean(winners)) if len(winners) > 0 else 0.0
+            avg_loss = float(np.abs(np.mean(losers))) if len(losers) > 0 else 0.0
+
+            expectancy_per_trade = (win_rate * avg_win) - ((1.0 - win_rate) * avg_loss)
+
+            # --- Omega Ratio (threshold=0) ---
+            omega_gains = float(np.sum(trade_returns[trade_returns > 0]))
+            omega_losses = float(np.abs(np.sum(trade_returns[trade_returns <= 0])))
+
+            if omega_losses > 0:
+                omega_ratio_zero = omega_gains / omega_losses
+            else:
+                omega_ratio_zero = 10.0 if omega_gains > 0 else 0.0  # Cap at 10
+
+            # --- Worst Trade ---
+            worst_trade_pct = float(np.abs(np.min(trade_returns))) if len(trade_returns) > 0 else 0.0
+
+            # --- Recovery Factor (usando equity curve) ---
+            equity_start = float(self.equity_curve.iloc[0])
+            equity_end = float(self.equity_curve.iloc[-1])
+
+            if equity_start > 0:
+                total_return = (equity_end / equity_start) - 1.0
+            else:
+                total_return = 0.0
+
+            # Calcular max drawdown de forma segura
+            equity_cummax = self.equity_curve.cummax()
+            # Evitar division por cero
+            equity_cummax_safe = equity_cummax.replace(0, np.nan)
+            drawdown_series = (self.equity_curve / equity_cummax_safe) - 1.0
+            drawdown_series = drawdown_series.fillna(0)
+            max_dd = float(np.abs(drawdown_series.min()))
+
+            if max_dd > 0 and not np.isnan(max_dd) and not np.isinf(max_dd):
+                recovery_factor_mr = total_return / max_dd
+            else:
+                recovery_factor_mr = 0.0
+
+            # --- Mean Reversion Score ---
+            # Componente de consistencia (corregido precedencia de operadores)
+            win_rate_component = 0.5 * min(win_rate / 0.65, 1.0)
+            if base_pf > 0 and base_pf < 100:
+                pf_component = 0.5 * min(max(base_pf - 1.0, 0) / 0.8, 1.0)
+            else:
+                pf_component = 0.5 if base_pf >= 100 else 0.0
+
+            consistency_score = win_rate_component + pf_component
+
+            # Componente de riesgo
+            dd_risk_component = 0.5 * max(1.0 - max_dd / 0.30, 0.0) if max_dd < 10 else 0.0
+            worst_trade_component = 0.5 * max(1.0 - worst_trade_pct / 10.0, 0.0)
+            risk_score = dd_risk_component + worst_trade_component
+
+            # Componente de volumen
+            volume_score = min(np.log10(max(num_trades, 1)) / np.log10(300), 1.0)
+
+            # Componente de retorno (clamped a [0, 1])
+            return_score = max(min(total_return / 0.50, 1.0), 0.0)
+
+            # Score final
+            mean_reversion_score = (
+                0.30 * consistency_score +
+                0.25 * risk_score +
+                0.25 * return_score +
+                0.20 * volume_score
+            )
+
+            # --- Mean Reversion Optimization Target ---
+            min_trades_required = 50
+            max_allowed_dd = 0.35
+
+            if num_trades < min_trades_required:
+                mean_reversion_optimization_target = 0.0
+            elif max_dd > max_allowed_dd:
+                mean_reversion_optimization_target = 0.0
+            elif expectancy_per_trade <= 0:
+                mean_reversion_optimization_target = 0.0
+            else:
+                # Score ponderado con componentes clamped
+                omega_component = min(omega_ratio_zero / 2.0, 1.0)
+                recovery_component = min(max(recovery_factor_mr, 0) / 3.0, 1.0)
+                expectancy_component = min(max(expectancy_per_trade, 0) / 2.0, 1.0)
+                dd_component = max(1.0 - max_dd / max_allowed_dd, 0.0)
+
+                mean_reversion_optimization_target = (
+                    0.30 * omega_component +
+                    0.25 * recovery_component +
+                    0.25 * expectancy_component +
+                    0.20 * dd_component
+                )
+
+            # Sanitizar todos los valores antes de retornar
+            def sanitize(val, default=0.0):
+                if val is None or np.isnan(val) or np.isinf(val):
+                    return default
+                return float(val)
+
+            return {
+                'adjusted_profit_factor': sanitize(adjusted_profit_factor),
+                'expectancy_per_trade': sanitize(expectancy_per_trade),
+                'omega_ratio_zero': sanitize(omega_ratio_zero),
+                'mean_reversion_score': sanitize(mean_reversion_score),
+                'mean_reversion_optimization_target': sanitize(mean_reversion_optimization_target),
+                'worst_trade_pct': sanitize(worst_trade_pct)
+            }
+
+        except Exception as e:
+            # En caso de cualquier error, retornar valores por defecto
+            return default_metrics
+
+    def _mrqs_metric(self, metrics: Dict) -> Dict:
+        """
+        Mean Reversion Quality Score (MRQS)
+
+        Metrica compuesta optimizada para estrategias de mean reversion
+        en mercados de alta volatilidad como Bitcoin futuros.
+
+        Componentes:
+        - Sortino Ratio (40%): Penaliza volatilidad negativa
+        - Calmar Ratio (25%): Return / Max Drawdown - critico para futuros
+        - Win Rate ajustado (15%): Penaliza WR sospechosamente alto (>85%)
+        - Profit Factor (10%): Con cap para evitar outliers
+        - Expectancy (10%): Valida edge matematico real
+
+        Penalizaciones:
+        - Pocos trades (<30): Reduce score significativamente
+        - WR muy alto (>85%): Indica probable overfitting
+        """
+        try:
+            # Extraer metricas base (ya calculadas)
+            sortino = metrics.get('sortino_ratio', 0) or 0
+            total_return = metrics.get('total_return_pct', 0) or 0
+            max_dd = abs(metrics.get('max_drawdown_pct', 100) or 100)
+            win_rate = (metrics.get('win_rate_pct', 0) or 0) / 100
+            profit_factor = metrics.get('profit_factor', 0) or 0
+            total_trades = metrics.get('total_trades', 0) or 0
+
+            # Obtener avg_win y avg_loss de trades
+            if len(self.trades) > 0:
+                winners = self.trades[self.trades['pnl'] > 0]
+                losers = self.trades[self.trades['pnl'] < 0]
+
+                if 'return_pct' in self.trades.columns:
+                    avg_win = float(winners['return_pct'].mean()) if len(winners) > 0 else 0
+                    avg_loss = abs(float(losers['return_pct'].mean())) if len(losers) > 0 else 1
+                else:
+                    avg_win = float(winners['pnl'].mean()) / self.initial_capital * 100 if len(winners) > 0 else 0
+                    avg_loss = abs(float(losers['pnl'].mean())) / self.initial_capital * 100 if len(losers) > 0 else 1
+            else:
+                avg_win = 0
+                avg_loss = 1
+
+            # 1. Sortino Score (40% peso)
+            # Mejor que Sharpe para MR porque tiene distribucion asimetrica
+            sortino_score = min(sortino / 2.0, 1.5)  # Cap en 1.5
+
+            # 2. Calmar Score (25% peso)
+            # Critico para futuros - una liquidacion borra todo
+            calmar = (total_return / max_dd) if max_dd > 0 else 0
+            calmar_score = min(calmar / 1.5, 1.5)  # Buen Calmar > 1.5
+
+            # 3. Win Rate ajustado (15% peso)
+            # MR tipicamente tiene WR alto (60-75%)
+            # WR > 85% es sospechoso de overfitting
+            if win_rate < 0.35:
+                wr_score = win_rate * 2  # Penaliza bajo WR
+            elif win_rate > 0.85:
+                wr_score = 1.7 - win_rate  # Penaliza WR sospechosamente alto
+            else:
+                wr_score = 0.7 + (win_rate - 0.35)  # Rango optimo 35-85%
+
+            # 4. Profit Factor con cap (10% peso)
+            # PF > 2 es excelente, cap en 1.0 para el score
+            if profit_factor == float('inf') or profit_factor > 10:
+                pf_score = 1.0
+            else:
+                pf_score = min(profit_factor / 2.0, 1.0)
+
+            # 5. Expectancy ajustada (10% peso)
+            # E = (WR * avg_win) - ((1-WR) * avg_loss)
+            expectancy = (win_rate * avg_win) - ((1 - win_rate) * avg_loss)
+            exp_score = min(max(expectancy / 2.0, -0.5), 1.0)
+
+            # 6. Penalizacion por pocos trades
+            # Minimo 30 trades para significancia estadistica en 4H
+            if total_trades < 15:
+                trade_penalty = 0.3  # Penalizacion severa
+            elif total_trades < 30:
+                trade_penalty = 0.6 + (total_trades - 15) * 0.027
+            else:
+                trade_penalty = 1.0
+
+            # Score final ponderado
+            raw_score = (
+                sortino_score * 0.40 +
+                calmar_score * 0.25 +
+                wr_score * 0.15 +
+                pf_score * 0.10 +
+                exp_score * 0.10
+            )
+
+            mrqs = raw_score * trade_penalty
+
+            # Sanitizar
+            if np.isnan(mrqs) or np.isinf(mrqs):
+                mrqs = 0.0
+
+            return {
+                'mrqs': float(mrqs),
+                'mrqs_raw': float(raw_score),
+                'mrqs_trade_penalty': float(trade_penalty)
+            }
+
+        except Exception:
+            return {
+                'mrqs': 0.0,
+                'mrqs_raw': 0.0,
+                'mrqs_trade_penalty': 0.0
+            }
+
     def print_report(self):
         """Imprime un reporte completo y formateado"""
         metrics = self.calculate_all_metrics()
@@ -333,6 +614,21 @@ class PerformanceAnalyzer:
         print(f"  Max Racha Ganadora:     {metrics['max_consecutive_wins']}")
         print(f"  Max Racha Perdedora:    {metrics['max_consecutive_losses']}")
 
+        # MEAN REVERSION
+        print("\n[MEAN REVERSION - Targets de Optimizacion]")
+        print(f"  Adjusted Profit Factor: {metrics['adjusted_profit_factor']:.2f}")
+        print(f"  Expectancy per Trade:   {metrics['expectancy_per_trade']:.4f}%")
+        print(f"  Omega Ratio (th=0):     {metrics['omega_ratio_zero']:.2f}")
+        print(f"  Worst Trade:            -{metrics['worst_trade_pct']:.2f}%")
+        print(f"  MR Score:               {metrics['mean_reversion_score']:.4f} {self._rating_mr_score(metrics['mean_reversion_score'])}")
+        print(f"  MR Optimization Target: {metrics['mean_reversion_optimization_target']:.4f}")
+
+        # MRQS (Bitcoin Futuros)
+        print("\n[MRQS - Mean Reversion Quality Score (BTC Futuros)]")
+        print(f"  MRQS:                   {metrics['mrqs']:.4f} {self._rating_mrqs(metrics['mrqs'])}")
+        print(f"  MRQS Raw Score:         {metrics['mrqs_raw']:.4f}")
+        print(f"  Trade Penalty:          {metrics['mrqs_trade_penalty']:.2f}x")
+
         # VEREDICTO FINAL
         print("\n" + "="*70)
         print(self._final_verdict(metrics))
@@ -362,6 +658,22 @@ class PerformanceAnalyzer:
         elif pf < 1.5: return "[Marginal]"
         elif pf < 2: return "[Bueno]"
         elif pf < 3: return "[Muy Bueno]"
+        else: return "[Excelente]"
+
+    def _rating_mr_score(self, score: float) -> str:
+        if score < 0.3: return "[Bajo]"
+        elif score < 0.5: return "[Moderado]"
+        elif score < 0.7: return "[Bueno]"
+        elif score < 0.85: return "[Muy Bueno]"
+        else: return "[Excelente]"
+
+    def _rating_mrqs(self, mrqs: float) -> str:
+        """Rating para MRQS (Mean Reversion Quality Score)"""
+        if mrqs < 0.3: return "[Bajo - No operar]"
+        elif mrqs < 0.5: return "[Marginal]"
+        elif mrqs < 0.7: return "[Aceptable]"
+        elif mrqs < 0.9: return "[Bueno]"
+        elif mrqs < 1.1: return "[Muy Bueno]"
         else: return "[Excelente]"
 
     def _final_verdict(self, metrics: Dict) -> str:

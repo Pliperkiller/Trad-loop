@@ -84,7 +84,7 @@ def create_and_run_strategy(data: pd.DataFrame, strategy_id: str) -> None:
     print(f"Estrategia: {strategy_id}")
     print(f"{'='*50}")
     print(f"Total trades:    {metrics.get('total_trades', 0)}")
-    print(f"Win rate:        {metrics.get('win_rate', 0):.1f}%")
+    print(f"Win rate:        {metrics.get('win_rate_pct', 0):.1f}%")
     print(f"Profit factor:   {metrics.get('profit_factor', 0):.2f}")
     print(f"Total return:    {metrics.get('total_return_pct', 0):.2f}%")
     print(f"Max drawdown:    {metrics.get('max_drawdown_pct', 0):.2f}%")

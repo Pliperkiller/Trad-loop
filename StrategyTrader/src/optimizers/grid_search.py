@@ -121,12 +121,29 @@ def grid_search(self, verbose: bool = True,
     results_df = pd.DataFrame(results)
     best_idx = results_df['score'].idxmax()
     best_result = results_df.iloc[best_idx]
-    
-    best_params = {name: best_result[name] for name in param_names}
-    best_score = best_result['score']
-    
+
+    # Función para convertir tipos numpy a tipos nativos de Python
+    def to_native(value, param_type: str):
+        """Convierte numpy types a Python natives."""
+        if hasattr(value, 'item'):
+            value = value.item()
+        if param_type == 'int':
+            return int(value)
+        elif param_type == 'float':
+            return float(value)
+        return value
+
+    # Crear lookup de tipos de parámetros
+    param_type_lookup = {p.name: p.param_type for p in self.parameter_space}
+
+    best_params = {
+        name: to_native(best_result[name], param_type_lookup.get(name, 'float'))
+        for name in param_names
+    }
+    best_score = float(best_result['score']) if hasattr(best_result['score'], 'item') else best_result['score']
+
     optimization_time = time.time() - start_time
-    
+
     return OptimizationResult(
         best_params=best_params,
         best_score=best_score,

@@ -46,6 +46,7 @@ from .strategies import (
     MovingAverageCrossoverStrategy,
     TrendFollowingEMAStrategy,
     MeanReversionLinearRegressionStrategy,
+    MeanReversionLRLongOnlyStrategy,
 )
 
 __all__ = [
@@ -60,4 +61,5 @@ __all__ = [
     'MovingAverageCrossoverStrategy',
     'TrendFollowingEMAStrategy',
     'MeanReversionLinearRegressionStrategy',
+    'MeanReversionLRLongOnlyStrategy',
 ]

@@ -17,6 +17,8 @@ def _generate_random_params(parameter_space: List[ParameterSpace]) -> Dict[str, 
 
     Para floats: genera valores discretos como 0.1, 0.15, 0.2, 0.25...
     Para ints: respeta el step como 10, 15, 20, 25...
+
+    IMPORTANTE: Retorna tipos nativos de Python (int, float) no numpy types.
     """
     params = {}
     for param in parameter_space:
@@ -28,8 +30,9 @@ def _generate_random_params(parameter_space: List[ParameterSpace]) -> Dict[str, 
 
             # Calcular número de pasos posibles
             num_steps = (high - low) // step
-            random_step = np.random.randint(0, num_steps + 1)
-            params[param.name] = low + (random_step * step)
+            random_step = int(np.random.randint(0, num_steps + 1))
+            # Convertir explícitamente a int nativo de Python
+            params[param.name] = int(low + (random_step * step))
 
         elif param.param_type == 'float':
             # Respetar step para floats
@@ -41,13 +44,19 @@ def _generate_random_params(parameter_space: List[ParameterSpace]) -> Dict[str, 
             num_steps = int((high - low) / step)
             if num_steps < 1:
                 num_steps = 1
-            random_step = np.random.randint(0, num_steps + 1)
+            random_step = int(np.random.randint(0, num_steps + 1))
             # Redondear para evitar errores de punto flotante
             value = low + (random_step * step)
-            params[param.name] = round(value, 10)
+            # Convertir explícitamente a float nativo de Python
+            params[param.name] = float(round(value, 10))
 
         elif param.param_type == 'categorical' and param.values:
-            params[param.name] = np.random.choice(param.values)
+            choice = np.random.choice(param.values)
+            # Convertir numpy types a Python natives si es necesario
+            if hasattr(choice, 'item'):
+                params[param.name] = choice.item()
+            else:
+                params[param.name] = choice
         else:
             # Fallback: tratar como float con step
             if param.low is not None and param.high is not None:
@@ -55,8 +64,8 @@ def _generate_random_params(parameter_space: List[ParameterSpace]) -> Dict[str, 
                 num_steps = int((param.high - param.low) / step)
                 if num_steps < 1:
                     num_steps = 1
-                random_step = np.random.randint(0, num_steps + 1)
-                params[param.name] = round(param.low + (random_step * step), 10)
+                random_step = int(np.random.randint(0, num_steps + 1))
+                params[param.name] = float(round(param.low + (random_step * step), 10))
             else:
                 params[param.name] = 0
 
@@ -192,9 +201,26 @@ def random_search(self, n_iter: int = 100, verbose: bool = True,
     best_idx = results_df['score'].idxmax()
     best_result = results_df.iloc[best_idx]
 
+    # Función para convertir tipos numpy a tipos nativos de Python
+    def to_native(value, param_type: str):
+        """Convierte numpy types a Python natives."""
+        if hasattr(value, 'item'):
+            value = value.item()
+        if param_type == 'int':
+            return int(value)
+        elif param_type == 'float':
+            return float(value)
+        return value
+
+    # Crear lookup de tipos de parámetros
+    param_type_lookup = {p.name: p.param_type for p in self.parameter_space}
+
     param_names = [p.name for p in self.parameter_space]
-    best_params = {name: best_result[name] for name in param_names if name in best_result}
-    best_score = best_result['score']
+    best_params = {
+        name: to_native(best_result[name], param_type_lookup.get(name, 'float'))
+        for name in param_names if name in best_result
+    }
+    best_score = float(best_result['score']) if hasattr(best_result['score'], 'item') else best_result['score']
 
     optimization_time = time.time() - start_time
 

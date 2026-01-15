@@ -1,38 +1,36 @@
-# Stress Testing - Manual de Componente
+# Stress Testing
 
-## Descripcion
+The **stress_testing** module provides tools for evaluating strategy robustness through simulations and scenario analysis.
 
-El modulo **stress_testing** proporciona herramientas para evaluar la robustez de estrategias mediante simulaciones y analisis de escenarios.
-
-## Arquitectura
+## Architecture
 
 ```
 stress_testing/
-├── stress_tester.py       # Orquestador principal
-├── models.py              # Modelos de configuracion
-├── monte_carlo.py         # Simulacion Monte Carlo
-├── scenario_analysis.py   # Analisis de escenarios
-└── sensitivity.py         # Analisis de sensibilidad
+├── stress_tester.py       # Main orchestrator
+├── models.py              # Configuration models
+├── monte_carlo.py         # Monte Carlo simulation
+├── scenario_analysis.py   # Scenario analysis
+└── sensitivity.py         # Sensitivity analysis
 ```
 
 ## Monte Carlo
 
-### Simulacion Basica
+### Basic Simulation
 
 ```python
 from src.stress_testing import MonteCarloSimulator
 
 mc = MonteCarloSimulator()
 
-# Simular paths
+# Simulate paths
 result = mc.simulate(
     strategy=my_strategy,
     n_simulations=1000,
-    n_periods=252,  # 1 ano
+    n_periods=252,  # 1 year
     method='bootstrap'
 )
 
-# Resultados
+# Results
 print(f"Mean Final Return: {result.mean_return:.2%}")
 print(f"Median Final Return: {result.median_return:.2%}")
 print(f"Std Dev: {result.std_return:.2%}")
@@ -42,10 +40,10 @@ print(f"Probability of Loss: {result.prob_loss:.2%}")
 print(f"Probability of Ruin (<-50%): {result.prob_ruin:.2%}")
 ```
 
-### Metodos de Simulacion
+### Simulation Methods
 
 ```python
-# Bootstrap (resampling historico)
+# Bootstrap (historical resampling)
 result = mc.simulate(
     strategy=strategy,
     method='bootstrap',
@@ -56,8 +54,8 @@ result = mc.simulate(
 result = mc.simulate(
     strategy=strategy,
     method='gbm',
-    drift=0.10,        # Drift anual 10%
-    volatility=0.20    # Volatilidad 20%
+    drift=0.10,        # Annual drift 10%
+    volatility=0.20    # Volatility 20%
 )
 
 # Historical sampling
@@ -68,10 +66,10 @@ result = mc.simulate(
 )
 ```
 
-### Analisis de Drawdown
+### Drawdown Analysis
 
 ```python
-# Distribucion de drawdowns
+# Drawdown distribution
 dd_analysis = mc.analyze_drawdowns(result)
 
 print(f"Mean Max DD: {dd_analysis['mean_max_dd']:.2%}")
@@ -81,32 +79,32 @@ print(f"Mean DD Duration: {dd_analysis['mean_dd_duration']} days")
 print(f"Max DD Duration: {dd_analysis['max_dd_duration']} days")
 ```
 
-### Visualizacion
+### Visualization
 
 ```python
-# Graficar paths simulados
+# Plot simulated paths
 mc.plot_simulation_paths(result, n_paths=100)
 
-# Distribucion de returns finales
+# Final returns distribution
 mc.plot_return_distribution(result)
 
-# Distribucion de drawdowns
+# Drawdown distribution
 mc.plot_drawdown_distribution(result)
 
-# Cone de confianza
+# Confidence cone
 mc.plot_confidence_cone(result, confidence_levels=[0.50, 0.75, 0.95])
 ```
 
-## Analisis de Escenarios
+## Scenario Analysis
 
-### Escenarios Predefinidos
+### Predefined Scenarios
 
 ```python
 from src.stress_testing import ScenarioAnalyzer
 
 analyzer = ScenarioAnalyzer()
 
-# Escenarios predefinidos
+# Predefined scenarios
 result = analyzer.run_predefined_scenarios(strategy)
 
 print("\n=== SCENARIO ANALYSIS ===")
@@ -117,10 +115,10 @@ for scenario, metrics in result.items():
     print(f"  Sharpe: {metrics['sharpe_ratio']:.2f}")
 ```
 
-### Escenarios Personalizados
+### Custom Scenarios
 
 ```python
-# Definir escenarios custom
+# Define custom scenarios
 scenarios = {
     'mild_correction': {
         'return_modifier': -0.10,
@@ -137,7 +135,7 @@ scenarios = {
         ]
     },
     'prolonged_bear': {
-        'return_modifier': -0.02,  # -2% mensual
+        'return_modifier': -0.02,  # -2% monthly
         'duration_months': 12
     }
 }
@@ -145,10 +143,10 @@ scenarios = {
 result = analyzer.run_custom_scenarios(strategy, scenarios)
 ```
 
-### Escenarios Historicos
+### Historical Scenarios
 
 ```python
-# Aplicar eventos historicos reales
+# Apply real historical events
 historical_scenarios = {
     'covid_crash_2020': {
         'start': '2020-02-20',
@@ -167,10 +165,10 @@ historical_scenarios = {
 result = analyzer.apply_historical_scenarios(strategy, historical_scenarios)
 ```
 
-### Stress por Factor
+### Factor Stress
 
 ```python
-# Stress testing por factores especificos
+# Stress testing by specific factors
 factor_stress = analyzer.factor_stress_test(
     strategy=strategy,
     factors={
@@ -180,23 +178,23 @@ factor_stress = analyzer.factor_stress_test(
     }
 )
 
-# Ver impacto de cada factor
+# View impact of each factor
 for factor, results in factor_stress.items():
     print(f"\n{factor} impact:")
     for level, metrics in results.items():
         print(f"  {level}: Sharpe={metrics['sharpe']:.2f}, DD={metrics['max_dd']:.2%}")
 ```
 
-## Analisis de Sensibilidad
+## Sensitivity Analysis
 
-### Sensibilidad de Parametros
+### Parameter Sensitivity
 
 ```python
 from src.stress_testing import SensitivityAnalyzer
 
 sensitivity = SensitivityAnalyzer()
 
-# Analisis de un parametro
+# Single parameter analysis
 result = sensitivity.single_parameter(
     strategy_class=MyStrategy,
     data=data,
@@ -210,14 +208,14 @@ print(f"Sharpe Sensitivity: {result.sharpe_sensitivity:.4f}")
 print(f"Return Sensitivity: {result.return_sensitivity:.4f}")
 print(f"Stability Score: {result.stability_score:.2f}")
 
-# Graficar
+# Plot
 sensitivity.plot_sensitivity_curve(result)
 ```
 
 ### Tornado Chart
 
 ```python
-# Analisis de multiples parametros
+# Multiple parameter analysis
 tornado = sensitivity.tornado_analysis(
     strategy_class=MyStrategy,
     data=data,
@@ -225,18 +223,18 @@ tornado = sensitivity.tornado_analysis(
     range_pct=0.20
 )
 
-# Ver importancia relativa
+# View relative importance
 for param, impact in tornado.sorted_impacts:
     print(f"{param}: {impact:.2%} impact on Sharpe")
 
-# Graficar tornado chart
+# Plot tornado chart
 sensitivity.plot_tornado(tornado)
 ```
 
-### Analisis de Interaccion
+### Interaction Analysis
 
 ```python
-# Interaccion entre dos parametros
+# Interaction between two parameters
 interaction = sensitivity.interaction_analysis(
     strategy_class=MyStrategy,
     data=data,
@@ -245,20 +243,20 @@ interaction = sensitivity.interaction_analysis(
     n_levels=10
 )
 
-# Heatmap de interaccion
+# Interaction heatmap
 sensitivity.plot_interaction_heatmap(interaction)
 ```
 
-## Stress Tester Completo
+## Complete Stress Tester
 
-### Reporte Integral
+### Comprehensive Report
 
 ```python
 from src.stress_testing import StressTester
 
 tester = StressTester()
 
-# Ejecutar suite completa
+# Run complete suite
 report = tester.run_full_suite(
     strategy=my_strategy,
     monte_carlo_sims=1000,
@@ -266,7 +264,7 @@ report = tester.run_full_suite(
     sensitivity_params=['fast_ema', 'slow_ema', 'rsi_period']
 )
 
-# Resumen ejecutivo
+# Executive summary
 print("=== STRESS TEST REPORT ===")
 print(f"\nMonte Carlo Results:")
 print(f"  Expected Return: {report.monte_carlo.mean_return:.2%}")
@@ -286,7 +284,7 @@ print(f"\nRisk Score: {report.overall_risk_score:.2f}/10")
 print(f"Recommendation: {report.recommendation}")
 ```
 
-### Configuracion del Test Suite
+### Test Suite Configuration
 
 ```python
 from src.stress_testing import StressTestConfig
@@ -314,15 +312,15 @@ config = StressTestConfig(
 report = tester.run_full_suite(strategy, config=config)
 ```
 
-### Exportar Reporte
+### Export Report
 
 ```python
-# Exportar a diferentes formatos
+# Export to different formats
 report.to_html('stress_test_report.html')
 report.to_pdf('stress_test_report.pdf')
 report.to_json('stress_test_report.json')
 
-# Dashboard interactivo
+# Interactive dashboard
 report.launch_dashboard()
 ```
 
@@ -330,41 +328,47 @@ report.launch_dashboard()
 
 ### StressTester
 
-| Metodo | Descripcion |
+| Method | Description |
 |--------|-------------|
-| `run_full_suite(strategy, config?)` | Suite completa |
-| `monte_carlo(strategy, n_sims)` | Solo Monte Carlo |
-| `scenario_analysis(strategy, scenarios)` | Solo escenarios |
-| `sensitivity(strategy, params)` | Solo sensibilidad |
+| `run_full_suite(strategy, config?)` | Complete suite |
+| `monte_carlo(strategy, n_sims)` | Monte Carlo only |
+| `scenario_analysis(strategy, scenarios)` | Scenarios only |
+| `sensitivity(strategy, params)` | Sensitivity only |
 
 ### MonteCarloSimulator
 
-| Metodo | Descripcion |
+| Method | Description |
 |--------|-------------|
-| `simulate(strategy, n_sims, n_periods)` | Ejecutar simulacion |
-| `analyze_drawdowns(result)` | Analizar drawdowns |
-| `calculate_var(result, confidence)` | Calcular VaR |
-| `plot_simulation_paths(result)` | Graficar paths |
+| `simulate(strategy, n_sims, n_periods)` | Run simulation |
+| `analyze_drawdowns(result)` | Analyze drawdowns |
+| `calculate_var(result, confidence)` | Calculate VaR |
+| `plot_simulation_paths(result)` | Plot paths |
 
 ### ScenarioAnalyzer
 
-| Metodo | Descripcion |
+| Method | Description |
 |--------|-------------|
-| `run_predefined_scenarios(strategy)` | Escenarios default |
-| `run_custom_scenarios(strategy, scenarios)` | Escenarios custom |
-| `apply_historical_scenarios(strategy, events)` | Eventos historicos |
-| `factor_stress_test(strategy, factors)` | Stress por factor |
+| `run_predefined_scenarios(strategy)` | Default scenarios |
+| `run_custom_scenarios(strategy, scenarios)` | Custom scenarios |
+| `apply_historical_scenarios(strategy, events)` | Historical events |
+| `factor_stress_test(strategy, factors)` | Factor stress |
 
 ### SensitivityAnalyzer
 
-| Metodo | Descripcion |
+| Method | Description |
 |--------|-------------|
-| `single_parameter(strategy, param)` | Sensibilidad simple |
+| `single_parameter(strategy, param)` | Single sensitivity |
 | `tornado_analysis(strategy, params)` | Tornado chart |
-| `interaction_analysis(strategy, p1, p2)` | Analisis interaccion |
+| `interaction_analysis(strategy, p1, p2)` | Interaction analysis |
 
 ## Tests
 
 ```bash
 pytest tests/stress_testing/ -v
 ```
+
+## Related Documentation
+
+- [Optimizers](optimizers.md) - Parameter optimization
+- [Risk Management](risk_management.md) - Risk controls
+- [Portfolio](portfolio.md) - Portfolio management

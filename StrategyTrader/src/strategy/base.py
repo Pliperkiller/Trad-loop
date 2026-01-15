@@ -43,8 +43,18 @@ class StrategyConfig:
     initial_capital: float
     risk_per_trade: float  # Porcentaje del capital
     max_positions: int
-    commission: float  # Porcentaje de comisión
-    slippage: float  # Slippage estimado en porcentaje
+    maker_fee: float = 0.1  # Fee para órdenes limit (%)
+    taker_fee: float = 0.1  # Fee para órdenes market (%)
+    slippage: float = 0.05  # Slippage estimado en porcentaje
+
+    @property
+    def commission(self) -> float:
+        """Backward compatibility: retorna taker_fee como default"""
+        return self.taker_fee
+
+    def get_fee(self, is_maker: bool = False) -> float:
+        """Retorna el fee según tipo de orden"""
+        return self.maker_fee if is_maker else self.taker_fee
 
 
 def validate_ohlcv_data(df: pd.DataFrame, strict: bool = True) -> Tuple[bool, List[str]]:
@@ -232,7 +242,48 @@ class TradingStrategy(ABC):
                 data = sanitize_ohlcv_data(data)
 
         self.data = data.copy()
-        self.data.index = pd.to_datetime(self.data.index)
+
+        # Validar y configurar el índice como DatetimeIndex
+        if isinstance(self.data.index, pd.DatetimeIndex):
+            # Ya es DatetimeIndex, verificar que no tenga fechas de 1970 (señal de índice incorrecto)
+            if len(self.data) > 0:
+                first_timestamp = pd.Timestamp(self.data.index[0])
+                if first_timestamp.year < 2000:
+                    logger.warning(
+                        f"DataFrame tiene índice DatetimeIndex pero con fechas sospechosas ({first_timestamp}). "
+                        "Verificar que los datos OHLCV tienen timestamps correctos."
+                    )
+        elif 'timestamp' in self.data.columns:
+            # Si hay columna timestamp, usarla como índice
+            logger.debug("Estableciendo columna 'timestamp' como índice del DataFrame")
+            self.data['timestamp'] = pd.to_datetime(self.data['timestamp'])
+            self.data = self.data.set_index('timestamp')
+        elif isinstance(self.data.index, pd.RangeIndex):
+            # RangeIndex numérico - esto causará fechas de 1970
+            raise ValueError(
+                "El DataFrame tiene índice numérico (RangeIndex) sin columna 'timestamp'. "
+                "Los datos OHLCV deben tener timestamps válidos como índice o columna 'timestamp'. "
+                "Verifica que los datos se obtuvieron correctamente del exchange."
+            )
+        else:
+            # Intentar convertir, pero con validación
+            try:
+                self.data.index = pd.to_datetime(self.data.index)
+                # Verificar resultado
+                if len(self.data) > 0:
+                    first_timestamp = pd.Timestamp(self.data.index[0])
+                    if first_timestamp.year < 2000:
+                        raise ValueError(
+                            f"La conversión del índice produjo fechas inválidas ({first_timestamp}). "
+                            "Verifica que los datos OHLCV tienen timestamps correctos."
+                        )
+            except ValueError:
+                raise  # Re-lanzar ValueError de la validación de fecha
+            except Exception as e:
+                raise ValueError(
+                    f"No se pudo convertir el índice del DataFrame a datetime: {e}. "
+                    "Los datos OHLCV deben tener timestamps válidos."
+                )
 
     @abstractmethod
     def calculate_indicators(self):
@@ -322,7 +373,9 @@ class TradingStrategy(ABC):
             )
             self.positions.append(position)
 
-            cost = position_size * signal.price * (1 + self.config.commission / 100)
+            # Entry siempre usa taker fee (orden market)
+            entry_fee = self.config.get_fee(is_maker=False)
+            cost = position_size * signal.price * (1 + entry_fee / 100)
             self.capital -= cost
 
     def close_position(self, position: Position, exit_price: float, exit_time: datetime, reason: str):
@@ -332,7 +385,15 @@ class TradingStrategy(ABC):
         else:
             pnl = (position.entry_price - exit_price) * position.quantity
 
-        commission = (position.entry_price + exit_price) * position.quantity * (self.config.commission / 100)
+        # Stop Loss y Take Profit son órdenes limit (maker), Signal Exit es market (taker)
+        is_exit_maker = reason in ('Stop Loss', 'Take Profit')
+        entry_fee = self.config.get_fee(is_maker=False)  # Entry siempre market
+        exit_fee = self.config.get_fee(is_maker=is_exit_maker)
+
+        # Comisión total: entry + exit
+        entry_commission = position.entry_price * position.quantity * (entry_fee / 100)
+        exit_commission = exit_price * position.quantity * (exit_fee / 100)
+        commission = entry_commission + exit_commission
         net_pnl = pnl - commission
 
         # Calcular return_pct con protección contra división por cero
@@ -352,10 +413,16 @@ class TradingStrategy(ABC):
             'position_type': position.position_type,
             'pnl': net_pnl,
             'return_pct': return_pct,
-            'reason': reason
+            'reason': reason,
+            # Detalles de comisiones
+            'commission_total': commission,
+            'commission_entry': entry_commission,
+            'commission_entry_type': 'taker',  # Entry siempre es market/taker
+            'commission_exit': exit_commission,
+            'commission_exit_type': 'maker' if is_exit_maker else 'taker',
         })
 
-        self.capital += (position.quantity * exit_price * (1 - self.config.commission / 100))
+        self.capital += (position.quantity * exit_price * (1 - exit_fee / 100))
         self.positions.remove(position)
 
     def backtest(self):
@@ -404,7 +471,34 @@ class TradingStrategy(ABC):
     def get_performance_metrics(self) -> Dict:
         """Calcula métricas de rendimiento"""
         if not self.closed_trades:
-            return {}
+            # Retornar métricas en 0 en lugar de dict vacío para evitar -inf en optimizador
+            return {
+                'total_trades': 0,
+                'winning_trades': 0,
+                'losing_trades': 0,
+                'win_rate_pct': 0.0,
+                'profit_factor': 0.0,
+                'total_return_pct': 0.0,
+                'max_drawdown_pct': 0.0,
+                'final_capital': self.config.initial_capital,
+                'avg_win': 0.0,
+                'avg_loss': 0.0,
+                'sharpe_ratio': 0.0,
+                'sortino_ratio': 0.0,
+                'calmar_ratio': 0.0,
+                'omega_ratio': 0.0,
+                'recovery_factor': 0.0,
+                'adjusted_profit_factor': 0.0,
+                'expectancy_per_trade': 0.0,
+                'omega_ratio_zero': 0.0,
+                'mean_reversion_score': 0.0,
+                'mean_reversion_optimization_target': 0.0,
+                'mrqs': 0.0,
+                'mrqs_raw': 0.0,
+                'mrqs_trade_penalty': 0.0,
+                'buy_hold_return_pct': 0.0,
+                'strategy_vs_hold_pct': 0.0,
+            }
 
         trades_df = pd.DataFrame(self.closed_trades)
 
@@ -434,6 +528,17 @@ class TradingStrategy(ABC):
             total_return = 0.0
             logger.warning("get_performance_metrics: initial_capital es cero")
 
+        # Buy & Hold return (benchmark) - comparar primer vs último precio
+        buy_hold_return = 0.0
+        if self.data is not None and len(self.data) > 0 and 'close' in self.data.columns:
+            first_price = float(self.data['close'].iloc[0])
+            last_price = float(self.data['close'].iloc[-1])
+            if first_price > 0:
+                buy_hold_return = ((last_price - first_price) / first_price) * 100
+
+        # Alpha vs Buy & Hold (strategy outperformance)
+        strategy_vs_hold = total_return - buy_hold_return
+
         equity_series = pd.Series(self.equity_curve)
         rolling_max = equity_series.expanding().max()
 
@@ -453,16 +558,138 @@ class TradingStrategy(ABC):
         else:
             sharpe_ratio = 0.0
 
+        # Sortino Ratio (solo downside risk)
+        downside_returns = returns[returns < 0]
+        downside_std = downside_returns.std() if len(downside_returns) > 0 else 0.0
+        if len(returns) > 0 and downside_std > 0 and np.isfinite(downside_std):
+            sortino_ratio = (returns.mean() / downside_std) * np.sqrt(252)
+        else:
+            sortino_ratio = 0.0
+
+        # Calmar Ratio (CAGR / Max Drawdown)
+        days = len(equity_series)
+        years = days / 252 if days > 0 else 0
+        if years > 0 and abs(max_drawdown) > 0:
+            cagr = (((equity_series.iloc[-1] / self.config.initial_capital) ** (1 / years)) - 1) * 100
+            calmar_ratio = cagr / abs(max_drawdown)
+        else:
+            calmar_ratio = 0.0
+
+        # Omega Ratio (ganancias sobre threshold vs pérdidas)
+        threshold = 0.0
+        gains = returns[returns > threshold] - threshold
+        losses = threshold - returns[returns < threshold]
+        omega_ratio = gains.sum() / losses.sum() if losses.sum() > 0 else 0.0
+
+        # Recovery Factor (ganancia neta / max drawdown)
+        net_profit = equity_series.iloc[-1] - self.config.initial_capital
+        max_dd_value = abs(max_drawdown) * self.config.initial_capital / 100
+        recovery_factor = net_profit / max_dd_value if max_dd_value > 0 else 0.0
+
+        # Mean Reversion metrics usando retornos de trades
+        trade_returns = trades_df['return_pct'].values if 'return_pct' in trades_df.columns else np.array([])
+
+        # Adjusted Profit Factor
+        if total_trades >= 10 and profit_factor != float('inf'):
+            adjusted_profit_factor = profit_factor * (1 - 1/np.sqrt(total_trades))
+        else:
+            adjusted_profit_factor = 0.0
+
+        # Expectancy per Trade
+        win_rate_decimal = win_rate / 100
+        expectancy_per_trade = (win_rate_decimal * avg_win) - ((1 - win_rate_decimal) * abs(avg_loss))
+
+        # Omega Ratio Zero (threshold=0, usando trade returns)
+        if len(trade_returns) > 0:
+            omega_gains = float(np.sum(trade_returns[trade_returns > 0]))
+            omega_losses = float(np.abs(np.sum(trade_returns[trade_returns <= 0])))
+            omega_ratio_zero = omega_gains / omega_losses if omega_losses > 0 else 10.0
+        else:
+            omega_ratio_zero = 0.0
+
+        # Mean Reversion Score
+        win_rate_component = 0.5 * min(win_rate_decimal / 0.65, 1.0)
+        pf_for_score = profit_factor if profit_factor != float('inf') else 10.0
+        pf_component = 0.5 * min(max(pf_for_score - 1.0, 0) / 0.8, 1.0) if pf_for_score < 100 else 0.5
+        consistency_score = win_rate_component + pf_component
+        dd_risk_component = 0.5 * max(1.0 - abs(max_drawdown) / 30.0, 0.0)
+        recovery_component = 0.5 * min(max(recovery_factor, 0) / 2.0, 1.0)
+        mean_reversion_score = 0.5 * consistency_score + 0.5 * (dd_risk_component + recovery_component) / 2
+
+        # Mean Reversion Optimization Target
+        max_allowed_dd = 25.0
+        if abs(max_drawdown) > max_allowed_dd or total_trades < 10:
+            mean_reversion_optimization_target = 0.0
+        else:
+            omega_comp = min(omega_ratio_zero / 2.0, 1.0)
+            recovery_comp = min(max(recovery_factor, 0) / 3.0, 1.0)
+            expectancy_comp = min(max(expectancy_per_trade, 0) / 2.0, 1.0)
+            dd_comp = max(1.0 - abs(max_drawdown) / max_allowed_dd, 0.0)
+            mean_reversion_optimization_target = 0.30 * omega_comp + 0.25 * recovery_comp + 0.25 * expectancy_comp + 0.20 * dd_comp
+
+        # MRQS (Mean Reversion Quality Score) - optimizado para crypto futuros
+        # Componentes ponderados
+        sortino_score = min(sortino_ratio / 2.0, 1.5) if np.isfinite(sortino_ratio) else 0.0
+        calmar_for_mrqs = (total_return / abs(max_drawdown)) if abs(max_drawdown) > 0 else 0.0
+        calmar_score = min(calmar_for_mrqs / 1.5, 1.5)
+
+        # Win rate ajustado (penaliza WR muy alto que indica overfitting)
+        if win_rate_decimal < 0.35:
+            wr_score = win_rate_decimal * 2
+        elif win_rate_decimal > 0.85:
+            wr_score = 1.7 - win_rate_decimal
+        else:
+            wr_score = 0.7 + (win_rate_decimal - 0.35)
+
+        pf_for_mrqs = profit_factor if profit_factor != float('inf') and profit_factor < 10 else 10.0
+        pf_score = min(pf_for_mrqs / 2.0, 1.0)
+
+        # Expectancy score
+        exp_score = min(max(expectancy_per_trade / 2.0, -0.5), 1.0)
+
+        # Trade penalty (mínimo 30 trades para 4H)
+        if total_trades < 15:
+            mrqs_trade_penalty = 0.3
+        elif total_trades < 30:
+            mrqs_trade_penalty = 0.6 + (total_trades - 15) * 0.027
+        else:
+            mrqs_trade_penalty = 1.0
+
+        mrqs_raw = (
+            sortino_score * 0.40 +
+            calmar_score * 0.25 +
+            wr_score * 0.15 +
+            pf_score * 0.10 +
+            exp_score * 0.10
+        )
+        mrqs = mrqs_raw * mrqs_trade_penalty
+        if not np.isfinite(mrqs):
+            mrqs = 0.0
+
         return {
             'total_trades': total_trades,
             'winning_trades': winning_trades,
             'losing_trades': losing_trades,
-            'win_rate': win_rate,
-            'profit_factor': profit_factor,
+            'win_rate_pct': win_rate,
+            'profit_factor': profit_factor if profit_factor != float('inf') else 999.0,
             'total_return_pct': total_return,
             'max_drawdown_pct': max_drawdown,
             'final_capital': self.equity_curve[-1],
             'avg_win': avg_win,
             'avg_loss': avg_loss,
-            'sharpe_ratio': sharpe_ratio
+            'sharpe_ratio': sharpe_ratio,
+            'sortino_ratio': sortino_ratio,
+            'calmar_ratio': calmar_ratio,
+            'omega_ratio': omega_ratio,
+            'recovery_factor': recovery_factor,
+            'adjusted_profit_factor': adjusted_profit_factor,
+            'expectancy_per_trade': expectancy_per_trade,
+            'omega_ratio_zero': omega_ratio_zero,
+            'mean_reversion_score': mean_reversion_score,
+            'mean_reversion_optimization_target': mean_reversion_optimization_target,
+            'mrqs': mrqs,
+            'mrqs_raw': mrqs_raw,
+            'mrqs_trade_penalty': mrqs_trade_penalty,
+            'buy_hold_return_pct': buy_hold_return,
+            'strategy_vs_hold_pct': strategy_vs_hold,
         }

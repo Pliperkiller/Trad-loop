@@ -20,6 +20,9 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 
+# Import shared OHLCV cache from backtest_api
+from .backtest_api import get_ohlcv_cache
+
 # Importar componentes de DataExtractor
 try:
     from DataExtractor.src.application.services import DataExtractionService
@@ -396,8 +399,23 @@ async def get_ohlcv(
         else:
             extended_start_dt = start_dt
 
-        # Obtener datos OHLCV (con warmup incluido)
-        df = adapter.fetch_ohlcv(symbol, tf_enum, extended_start_dt, end_dt)
+        # Intentar obtener datos del cache compartido (usado también por backtest)
+        ohlcv_cache = get_ohlcv_cache()
+        extended_start_iso = extended_start_dt.isoformat()
+        end_iso = end_dt.isoformat()
+
+        df = ohlcv_cache.get(exchange, symbol, timeframe, extended_start_iso, end_iso)
+
+        if df is None:
+            # Cache miss - descargar del exchange
+            df = adapter.fetch_ohlcv(symbol, tf_enum, extended_start_dt, end_dt)
+
+            # Guardar en cache para backtest/optimización posterior
+            if len(df) > 0:
+                ohlcv_cache.set(exchange, symbol, timeframe, extended_start_iso, end_iso, df)
+                logger.info(f"[OHLCV] Cached {len(df)} candles for {exchange}:{symbol}:{timeframe}")
+        else:
+            logger.info(f"[OHLCV] Cache hit for {exchange}:{symbol}:{timeframe} ({len(df)} candles)")
 
         # Calcular cuántas velas son de warmup (antes del start_dt solicitado)
         actual_warmup_count = 0
@@ -583,7 +601,7 @@ async def get_performance(strategy_id: str):
         total_trades=metrics.get('total_trades', 0),
         winning_trades=metrics.get('winning_trades', 0),
         losing_trades=metrics.get('losing_trades', 0),
-        win_rate=metrics.get('win_rate', 0),
+        win_rate=metrics.get('win_rate_pct', 0),
         profit_factor=metrics.get('profit_factor', 0),
         total_return_pct=metrics.get('total_return_pct', 0),
         max_drawdown_pct=metrics.get('max_drawdown_pct', 0),

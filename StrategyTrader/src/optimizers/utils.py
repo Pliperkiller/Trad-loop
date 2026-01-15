@@ -17,7 +17,7 @@ def snap_to_step(
     high: float,
     step: Optional[float],
     param_type: str
-) -> float:
+):
     """
     Ajusta un valor continuo al grid definido por step.
 
@@ -32,7 +32,8 @@ def snap_to_step(
         param_type: Tipo del parámetro ('int' o 'float')
 
     Returns:
-        Valor ajustado al step más cercano dentro de [low, high]
+        Valor ajustado al step más cercano dentro de [low, high].
+        Retorna int nativo de Python para 'int', float nativo para 'float'.
 
     Examples:
         >>> snap_to_step(7.3, 0, 10, 2, 'int')
@@ -44,7 +45,9 @@ def snap_to_step(
     """
     if step is None or step <= 0:
         if param_type == 'int':
-            return int(round(np.clip(value, low, high)))
+            # Convertir explícitamente a int nativo de Python
+            return int(round(float(np.clip(value, low, high))))
+        # Convertir explícitamente a float nativo de Python
         return float(np.clip(value, low, high))
 
     # Calcular el número de pasos desde low
@@ -53,12 +56,13 @@ def snap_to_step(
     # Calcular el valor ajustado
     snapped = low + (steps_from_low * step)
 
-    # Asegurar que está dentro de los límites
-    snapped = np.clip(snapped, low, high)
+    # Asegurar que está dentro de los límites y convertir a float nativo
+    snapped = float(np.clip(snapped, low, high))
 
     if param_type == 'int':
+        # Convertir explícitamente a int nativo de Python
         return int(round(snapped))
-    return round(float(snapped), 10)
+    return round(snapped, 10)
 
 
 def convert_point_to_params(

@@ -86,25 +86,46 @@ def bayesian_optimization(self, n_calls: int = 50, n_initial_points: int = 10,
     # Definir espacio de búsqueda para skopt
     space = []
     param_names = []
+    fixed_params = {}  # Parámetros con min == max (no se optimizan)
 
     for param in self.parameter_space:
+        # Validar que hay un rango válido para optimizar
+        low_val = param.low if param.low is not None else 0
+        high_val = param.high if param.high is not None else 100
+
+        # Si min >= max, el parámetro es fijo (no hay nada que optimizar)
+        if low_val >= high_val:
+            fixed_params[param.name] = low_val
+            if verbose:
+                print(f"  [INFO] Parámetro '{param.name}' fijo en {low_val} (min >= max)")
+            continue
+
         param_names.append(param.name)
 
         if param.param_type == 'int':
-            low = int(param.low) if param.low is not None else 0
-            high = int(param.high) if param.high is not None else 100
+            low = int(low_val)
+            high = int(high_val)
             space.append(Integer(low, high, name=param.name))
         elif param.param_type == 'float':
-            low = float(param.low) if param.low is not None else 0.0
-            high = float(param.high) if param.high is not None else 1.0
+            low = float(low_val)
+            high = float(high_val)
             space.append(Real(low, high, name=param.name))
         elif param.param_type == 'categorical' and param.values:
             space.append(Integer(0, len(param.values) - 1, name=param.name))
         else:
-            if param.low is not None and param.high is not None:
-                space.append(Real(float(param.low), float(param.high), name=param.name))
-            else:
-                space.append(Integer(0, 1, name=param.name))
+            space.append(Real(float(low_val), float(high_val), name=param.name))
+
+    # Verificar que hay al menos un parámetro para optimizar
+    if not space:
+        raise ValueError("No hay parámetros con rangos válidos para optimizar. "
+                        "Todos los parámetros tienen min >= max.")
+
+    # Crear lista filtrada de parameter_space (solo los que se optimizan)
+    optimizable_params = [p for p in self.parameter_space if p.name in param_names]
+
+    if verbose and fixed_params:
+        print(f"  Parámetros fijos: {fixed_params}")
+        print()
 
     # Crear optimizador con interfaz ask/tell para batch acquisition
     optimizer = Optimizer(
@@ -166,7 +187,13 @@ def bayesian_optimization(self, n_calls: int = 50, n_initial_points: int = 10,
             points = [optimizer.ask()]
 
         # Convertir puntos a parámetros con snap-to-step
-        params_list = [_convert_point_to_params(p, self.parameter_space) for p in points]
+        # Usar optimizable_params (solo los que tienen rango válido)
+        params_list = []
+        for p in points:
+            params = _convert_point_to_params(p, optimizable_params)
+            # Agregar parámetros fijos
+            params.update(fixed_params)
+            params_list.append(params)
 
         # Evaluar en paralelo
         results_batch = []
@@ -219,19 +246,36 @@ def bayesian_optimization(self, n_calls: int = 50, n_initial_points: int = 10,
 
     # Procesar resultados finales
     def to_python_type(val):
+        """Convierte tipos numpy a tipos nativos de Python."""
         if hasattr(val, 'item'):
             return val.item()
         return val
+
+    def to_native(value, param_type: str):
+        """Convierte valor a tipo nativo de Python según param_type."""
+        val = to_python_type(value)
+        if param_type == 'int':
+            return int(val)
+        elif param_type == 'float':
+            return float(val)
+        return val
+
+    # Crear lookup de tipos de parámetros
+    param_type_lookup = {p.name: p.param_type for p in self.parameter_space}
 
     # Encontrar mejor resultado
     valid_results = [r for r in all_results if r['score'] > -1e9]
     if valid_results:
         best_result = max(valid_results, key=lambda r: r['score'])
-        best_params = best_result['params']
-        best_score = best_result['score']
+        # Convertir params a tipos nativos de Python
+        best_params = {
+            k: to_native(v, param_type_lookup.get(k, 'float'))
+            for k, v in best_result['params'].items()
+        }
+        best_score = float(to_python_type(best_result['score']))
     else:
         best_params = {}
-        best_score = -np.inf
+        best_score = float('-inf')
 
     # Crear DataFrame con historial
     results_data = []

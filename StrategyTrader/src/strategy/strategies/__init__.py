@@ -12,9 +12,11 @@ Para agregar una nueva estrategia:
 from .ma_crossover import MovingAverageCrossoverStrategy
 from .trend_following_ema import TrendFollowingEMAStrategy
 from .mean_reversion_lr import MeanReversionLinearRegressionStrategy
+from .mean_reversion_lr_long import MeanReversionLRLongOnlyStrategy
 
 __all__ = [
     'MovingAverageCrossoverStrategy',
     'TrendFollowingEMAStrategy',
     'MeanReversionLinearRegressionStrategy',
+    'MeanReversionLRLongOnlyStrategy',
 ]

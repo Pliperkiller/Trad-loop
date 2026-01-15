@@ -1,24 +1,22 @@
-# Portfolio Management - Manual de Componente
+# Portfolio Management
 
-## Descripcion
+The **portfolio** module provides tools for multi-asset portfolio management with various allocation and rebalancing methods.
 
-El modulo **portfolio** proporciona herramientas para gestion de portafolios multi-activo con diversos metodos de asignacion y rebalanceo.
-
-## Arquitectura
+## Architecture
 
 ```
 portfolio/
-├── portfolio_manager.py   # Orquestador principal
+├── portfolio_manager.py   # Main orchestrator
 ├── models.py              # PortfolioConfig, PortfolioState
-├── allocator.py           # Metodos de asignacion
-├── rebalancer.py          # Estrategias de rebalanceo
-├── backtester.py          # Backtesting de portafolio
-└── metrics.py             # Metricas de portafolio
+├── allocator.py           # Allocation methods
+├── rebalancer.py          # Rebalancing strategies
+├── backtester.py          # Portfolio backtesting
+└── metrics.py             # Portfolio metrics
 ```
 
-## Uso Basico
+## Basic Usage
 
-### Configuracion
+### Configuration
 
 ```python
 from src.portfolio import PortfolioManager, PortfolioConfig, AllocationMethod
@@ -28,22 +26,22 @@ config = PortfolioConfig(
     symbols=['BTC/USDT', 'ETH/USDT', 'SOL/USDT'],
     allocation_method=AllocationMethod.RISK_PARITY,
     rebalance_frequency='monthly',
-    min_position_weight=0.05,     # Min 5% por activo
-    max_position_weight=0.40,     # Max 40% por activo
-    transaction_cost=0.001        # 0.1% comision
+    min_position_weight=0.05,     # Min 5% per asset
+    max_position_weight=0.40,     # Max 40% per asset
+    transaction_cost=0.001        # 0.1% commission
 )
 
 manager = PortfolioManager(config)
 ```
 
-## Metodos de Asignacion
+## Allocation Methods
 
 ### Equal Weight
 
 ```python
 config.allocation_method = AllocationMethod.EQUAL_WEIGHT
 
-# Resultado: 33.3% BTC, 33.3% ETH, 33.3% SOL
+# Result: 33.3% BTC, 33.3% ETH, 33.3% SOL
 ```
 
 ### Market Cap Weight
@@ -51,8 +49,8 @@ config.allocation_method = AllocationMethod.EQUAL_WEIGHT
 ```python
 config.allocation_method = AllocationMethod.MARKET_CAP_WEIGHT
 
-# Pesos basados en capitalizacion de mercado
-# Requiere datos de market cap
+# Weights based on market capitalization
+# Requires market cap data
 manager.set_market_caps({
     'BTC/USDT': 800_000_000_000,
     'ETH/USDT': 300_000_000_000,
@@ -62,18 +60,18 @@ manager.set_market_caps({
 
 ### Risk Parity
 
-Cada activo contribuye igual al riesgo total.
+Each asset contributes equally to total risk.
 
 ```python
 config.allocation_method = AllocationMethod.RISK_PARITY
 
-# Activos mas volatiles reciben menos peso
-# para igualar contribucion al riesgo
+# More volatile assets receive less weight
+# to equalize risk contribution
 ```
 
 ### Inverse Volatility
 
-Peso inverso a la volatilidad.
+Weight inverse to volatility.
 
 ```python
 config.allocation_method = AllocationMethod.INVERSE_VOLATILITY
@@ -83,28 +81,28 @@ config.allocation_method = AllocationMethod.INVERSE_VOLATILITY
 
 ### Minimum Variance
 
-Optimizacion de Markowitz para minima varianza.
+Markowitz optimization for minimum variance.
 
 ```python
 config.allocation_method = AllocationMethod.MINIMUM_VARIANCE
 
-# Minimiza: w' * Cov * w
-# Sujeto a: sum(w) = 1, w >= 0
+# Minimizes: w' * Cov * w
+# Subject to: sum(w) = 1, w >= 0
 ```
 
 ### Maximum Sharpe
 
-Optimizacion para maximo Sharpe Ratio.
+Optimization for maximum Sharpe Ratio.
 
 ```python
 config.allocation_method = AllocationMethod.MAXIMUM_SHARPE
 
-# Maximiza: (w' * returns - rf) / sqrt(w' * Cov * w)
+# Maximizes: (w' * returns - rf) / sqrt(w' * Cov * w)
 ```
 
 ### Risk Budgeting
 
-Asignacion con presupuesto de riesgo especifico.
+Allocation with specific risk budget.
 
 ```python
 from src.portfolio import RiskBudgetAllocator
@@ -113,74 +111,74 @@ allocator = RiskBudgetAllocator()
 weights = allocator.allocate(
     returns=historical_returns,
     risk_budget={
-        'BTC/USDT': 0.5,   # 50% del riesgo
-        'ETH/USDT': 0.3,   # 30% del riesgo
-        'SOL/USDT': 0.2    # 20% del riesgo
+        'BTC/USDT': 0.5,   # 50% of risk
+        'ETH/USDT': 0.3,   # 30% of risk
+        'SOL/USDT': 0.2    # 20% of risk
     }
 )
 ```
 
 ### Hierarchical Risk Parity (HRP)
 
-Metodo avanzado basado en clustering jerarquico.
+Advanced method based on hierarchical clustering.
 
 ```python
 config.allocation_method = AllocationMethod.HRP
 
-# 1. Calcula matriz de correlacion
-# 2. Clustering jerarquico
-# 3. Asigna pesos recursivamente
+# 1. Calculate correlation matrix
+# 2. Hierarchical clustering
+# 3. Assign weights recursively
 ```
 
-## Rebalanceo
+## Rebalancing
 
-### Por Frecuencia
+### By Frequency
 
 ```python
-config.rebalance_frequency = 'daily'    # Diario
-config.rebalance_frequency = 'weekly'   # Semanal
-config.rebalance_frequency = 'monthly'  # Mensual
-config.rebalance_frequency = 'quarterly'# Trimestral
+config.rebalance_frequency = 'daily'    # Daily
+config.rebalance_frequency = 'weekly'   # Weekly
+config.rebalance_frequency = 'monthly'  # Monthly
+config.rebalance_frequency = 'quarterly'# Quarterly
 ```
 
-### Por Threshold (Drift)
+### By Threshold (Drift)
 
 ```python
 from src.portfolio import ThresholdRebalancer
 
 rebalancer = ThresholdRebalancer(
-    drift_threshold=0.05  # Rebalancear si drift > 5%
+    drift_threshold=0.05  # Rebalance if drift > 5%
 )
 
-# El drift se calcula como:
+# Drift is calculated as:
 # drift = max(|actual_weight - target_weight|)
 ```
 
-### Por Volatilidad
+### By Volatility
 
 ```python
 from src.portfolio import VolatilityTargetRebalancer
 
 rebalancer = VolatilityTargetRebalancer(
-    target_volatility=0.15,  # 15% anualizado
-    lookback=20              # Ventana de calculo
+    target_volatility=0.15,  # 15% annualized
+    lookback=20              # Calculation window
 )
 ```
 
-## Backtesting de Portafolio
+## Portfolio Backtesting
 
 ```python
-# Cargar datos multi-activo
+# Load multi-asset data
 portfolio_data = {
     'BTC/USDT': pd.read_csv('btc.csv', index_col='timestamp', parse_dates=True),
     'ETH/USDT': pd.read_csv('eth.csv', index_col='timestamp', parse_dates=True),
     'SOL/USDT': pd.read_csv('sol.csv', index_col='timestamp', parse_dates=True),
 }
 
-# Ejecutar backtest
+# Run backtest
 result = manager.backtest(portfolio_data)
 
-# Resultados
+# Results
 print(f"Total Return: {result.metrics['total_return']:.2f}%")
 print(f"Annualized Return: {result.metrics['annualized_return']:.2f}%")
 print(f"Volatility: {result.metrics['volatility']:.2f}%")
@@ -191,51 +189,51 @@ print(f"Calmar Ratio: {result.metrics['calmar_ratio']:.2f}")
 # Equity curve
 result.equity_curve.plot(title='Portfolio Equity')
 
-# Historial de asignaciones
+# Allocation history
 print(result.allocation_history.tail())
 
-# Fechas de rebalanceo
+# Rebalance dates
 print(f"Rebalances: {len(result.rebalance_dates)}")
 ```
 
-## Metricas de Portafolio
+## Portfolio Metrics
 
 ```python
 from src.portfolio import PortfolioMetrics
 
 metrics = PortfolioMetrics()
 
-# Calcular todas las metricas
+# Calculate all metrics
 report = metrics.calculate(result.equity_curve, result.weights_history)
 
-# Metricas basicas
+# Basic metrics
 print(f"Return: {report['total_return']:.2f}%")
 print(f"Volatility: {report['volatility']:.2f}%")
 print(f"Sharpe: {report['sharpe_ratio']:.2f}")
 
-# Metricas de diversificacion
+# Diversification metrics
 print(f"Diversification Ratio: {report['diversification_ratio']:.2f}")
 print(f"Concentration (HHI): {report['hhi']:.4f}")
 
-# Contribucion al riesgo por activo
+# Risk contribution by asset
 for asset, contribution in report['risk_contribution'].items():
     print(f"{asset}: {contribution*100:.1f}%")
 
-# Matriz de correlacion
+# Correlation matrix
 print("\nCorrelation Matrix:")
 print(report['correlation_matrix'])
 ```
 
-## Operaciones en Vivo
+## Live Operations
 
-### Obtener Asignacion Actual
+### Get Current Allocation
 
 ```python
-# Asignacion actual
+# Current allocation
 current = manager.get_current_allocation()
 print(f"Current weights: {current}")
 
-# Asignacion objetivo
+# Target allocation
 target = manager.get_target_allocation()
 print(f"Target weights: {target}")
 
@@ -244,10 +242,10 @@ drift = manager.calculate_drift()
 print(f"Current drift: {drift:.2%}")
 ```
 
-### Calcular Trades para Rebalanceo
+### Calculate Rebalance Trades
 
 ```python
-# Trades necesarios
+# Required trades
 trades = manager.calculate_rebalance_trades(current_prices)
 
 for trade in trades:
@@ -255,20 +253,20 @@ for trade in trades:
     print(f"  Value: ${trade['value']:.2f}")
 ```
 
-### Ejecutar Rebalanceo
+### Execute Rebalance
 
 ```python
-# Con UnifiedExecutor
+# With UnifiedExecutor
 from src.broker_bridge import UnifiedExecutor
 
 executor = UnifiedExecutor()
-# ... configurar brokers
+# ... configure brokers
 
-# Ejecutar rebalanceo
+# Execute rebalance
 await manager.execute_rebalance(executor)
 ```
 
-## Analisis Avanzado
+## Advanced Analysis
 
 ### Efficient Frontier
 
@@ -277,27 +275,27 @@ from src.portfolio import EfficientFrontier
 
 ef = EfficientFrontier(returns=historical_returns)
 
-# Calcular frontera
+# Calculate frontier
 frontier = ef.calculate(n_points=100)
 
-# Graficar
+# Plot
 ef.plot_frontier()
 
-# Portafolio de minima varianza
+# Minimum variance portfolio
 min_var = ef.get_minimum_variance_portfolio()
 
-# Portafolio de maximo Sharpe
+# Maximum Sharpe portfolio
 max_sharpe = ef.get_maximum_sharpe_portfolio()
 ```
 
-### Stress Testing de Portafolio
+### Portfolio Stress Testing
 
 ```python
 from src.portfolio import PortfolioStressTester
 
 stress_tester = PortfolioStressTester(manager)
 
-# Escenarios
+# Scenarios
 scenarios = {
     'crypto_crash': {'BTC/USDT': -0.30, 'ETH/USDT': -0.40, 'SOL/USDT': -0.50},
     'correlation_spike': {'correlation_increase': 0.3},
@@ -319,7 +317,7 @@ from src.portfolio import AttributionAnalyzer
 
 analyzer = AttributionAnalyzer()
 
-# Analisis de contribucion
+# Contribution analysis
 attribution = analyzer.calculate(
     portfolio_returns=result.returns,
     weights_history=result.weights_history,
@@ -339,40 +337,46 @@ print(f"Information Ratio: {attribution['information_ratio']:.2f}")
 
 ### PortfolioManager
 
-| Metodo | Descripcion |
+| Method | Description |
 |--------|-------------|
-| `backtest(data)` | Ejecutar backtest |
-| `get_current_allocation()` | Asignacion actual |
-| `get_target_allocation()` | Asignacion objetivo |
-| `calculate_drift()` | Calcular drift |
-| `calculate_rebalance_trades(prices)` | Trades necesarios |
-| `execute_rebalance(executor)` | Ejecutar rebalanceo |
+| `backtest(data)` | Run backtest |
+| `get_current_allocation()` | Current allocation |
+| `get_target_allocation()` | Target allocation |
+| `calculate_drift()` | Calculate drift |
+| `calculate_rebalance_trades(prices)` | Required trades |
+| `execute_rebalance(executor)` | Execute rebalance |
 
 ### PortfolioConfig
 
-| Campo | Descripcion |
+| Field | Description |
 |-------|-------------|
-| `initial_capital` | Capital inicial |
-| `symbols` | Lista de simbolos |
-| `allocation_method` | Metodo de asignacion |
-| `rebalance_frequency` | Frecuencia de rebalanceo |
-| `min_position_weight` | Peso minimo por posicion |
-| `max_position_weight` | Peso maximo por posicion |
-| `transaction_cost` | Costo de transaccion |
+| `initial_capital` | Initial capital |
+| `symbols` | List of symbols |
+| `allocation_method` | Allocation method |
+| `rebalance_frequency` | Rebalance frequency |
+| `min_position_weight` | Minimum weight per position |
+| `max_position_weight` | Maximum weight per position |
+| `transaction_cost` | Transaction cost |
 
 ### PortfolioResult
 
-| Campo | Descripcion |
+| Field | Description |
 |-------|-------------|
-| `equity_curve` | Serie temporal de equity |
-| `weights_history` | Historial de pesos |
-| `allocation_history` | Historial de asignaciones |
-| `rebalance_dates` | Fechas de rebalanceo |
-| `metrics` | Diccionario de metricas |
-| `trades` | Lista de trades ejecutados |
+| `equity_curve` | Equity time series |
+| `weights_history` | Weight history |
+| `allocation_history` | Allocation history |
+| `rebalance_dates` | Rebalance dates |
+| `metrics` | Metrics dictionary |
+| `trades` | List of executed trades |
 
 ## Tests
 
 ```bash
 pytest tests/portfolio/ -v
 ```
+
+## Related Documentation
+
+- [Risk Management](risk_management.md) - Risk controls
+- [Optimizers](optimizers.md) - Parameter optimization
+- [Stress Testing](stress_testing.md) - Stress tests

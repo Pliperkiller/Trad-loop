@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from collections import OrderedDict
 import threading
 
+import pandas as pd
 from fastapi import HTTPException
 from pydantic import BaseModel
 
@@ -41,6 +42,7 @@ try:
         MovingAverageCrossoverStrategy,
         TrendFollowingEMAStrategy,
         MeanReversionLinearRegressionStrategy,
+        MeanReversionLRLongOnlyStrategy,
     )
     STRATEGY_AVAILABLE = True
 except ImportError:
@@ -96,6 +98,8 @@ class OHLCVCache:
     - Límite por memoria total (max_memory_mb)
     - TTL configurable
     - Evicción LRU cuando se exceden límites
+    - Reutilización de rangos: si hay datos cacheados que cubren el rango
+      solicitado, extrae el subconjunto sin descargar de nuevo
     """
 
     def __init__(
@@ -110,7 +114,8 @@ class OHLCVCache:
             ttl_seconds: Tiempo de vida en segundos (default: 5 minutos)
             max_memory_mb: Límite de memoria en MB (default: 500 MB)
         """
-        self._cache: OrderedDict[str, Tuple[Any, float, int]] = OrderedDict()
+        # Cache: key -> (data, timestamp, mem_size, start_iso, end_iso)
+        self._cache: OrderedDict[str, Tuple[Any, float, int, str, str]] = OrderedDict()
         self._max_size = max_size
         self._ttl = ttl_seconds
         self._max_memory_bytes = max_memory_mb * 1024 * 1024
@@ -119,23 +124,21 @@ class OHLCVCache:
         self._hits = 0
         self._misses = 0
 
-    def _make_key(self, exchange: str, symbol: str, timeframe: str,
-                  start: str, end: str) -> str:
-        """Genera una clave única para el dataset"""
-        key_str = f"{exchange}:{symbol}:{timeframe}:{start}:{end}"
-        return hashlib.md5(key_str.encode()).hexdigest()
+    def _make_base_key(self, exchange: str, symbol: str, timeframe: str) -> str:
+        """Genera clave base (exchange:symbol:timeframe) para agrupar rangos"""
+        return f"{exchange}:{symbol}:{timeframe}"
 
     def _evict_if_needed(self, needed_bytes: int = 0) -> None:
         """Evicta entradas hasta tener espacio suficiente (debe llamarse con lock)."""
         # Evictar por tamaño
         while len(self._cache) >= self._max_size and self._cache:
-            _, (_, _, mem_size) = self._cache.popitem(last=False)
+            _, (_, _, mem_size, _, _) = self._cache.popitem(last=False)
             self._current_memory -= mem_size
 
         # Evictar por memoria
         while (self._current_memory + needed_bytes > self._max_memory_bytes
                and self._cache):
-            _, (_, _, mem_size) = self._cache.popitem(last=False)
+            _, (_, _, mem_size, _, _) = self._cache.popitem(last=False)
             self._current_memory -= mem_size
             logger.debug(f"Cache eviction: freed {mem_size / 1024 / 1024:.2f} MB")
 
@@ -144,35 +147,60 @@ class OHLCVCache:
         """
         Obtiene datos del cache si existen y no han expirado.
 
+        Busca por base_key (exchange:symbol:timeframe) y si hay datos
+        cacheados que cubren el rango solicitado, extrae el subconjunto.
+
         Args:
             exchange: ID del exchange
             symbol: Par de trading
             timeframe: Timeframe
-            start: Fecha inicio
-            end: Fecha fin
+            start: Fecha inicio (ISO format)
+            end: Fecha fin (ISO format)
             copy: Si True, retorna copia del DataFrame (default: True)
-                  Si False, retorna referencia directa (más rápido, pero no modificar)
 
         Returns:
             DataFrame con datos OHLCV o None si no está en cache
         """
-        key = self._make_key(exchange, symbol, timeframe, start, end)
+        base_key = self._make_base_key(exchange, symbol, timeframe)
+        requested_start = pd.Timestamp(start)
+        requested_end = pd.Timestamp(end)
 
         with self._lock:
-            if key in self._cache:
-                data, timestamp, mem_size = self._cache[key]
+            if base_key in self._cache:
+                data, timestamp, mem_size, cached_start, cached_end = self._cache[base_key]
 
                 # Verificar TTL
-                if time.time() - timestamp < self._ttl:
-                    # Mover al final (LRU)
-                    self._cache.move_to_end(key)
-                    self._hits += 1
-                    return data.copy() if copy else data
-                else:
+                if time.time() - timestamp >= self._ttl:
                     # Expirado, eliminar
                     self._current_memory -= mem_size
-                    del self._cache[key]
-                    logger.debug(f"Cache expired: {key[:8]}...")
+                    del self._cache[base_key]
+                    logger.debug(f"Cache expired: {base_key}")
+                    self._misses += 1
+                    return None
+
+                # Verificar si el rango cacheado cubre el solicitado
+                cached_start_ts = pd.Timestamp(cached_start)
+                cached_end_ts = pd.Timestamp(cached_end)
+
+                if cached_start_ts <= requested_start and cached_end_ts >= requested_end:
+                    # El cache cubre el rango solicitado - extraer subconjunto
+                    self._cache.move_to_end(base_key)
+                    self._hits += 1
+
+                    # Filtrar por rango si es necesario
+                    if cached_start_ts < requested_start or cached_end_ts > requested_end:
+                        # Necesitamos filtrar
+                        filtered = data.loc[requested_start:requested_end]
+                        logger.debug(f"[CACHE HIT] {base_key} - filtrado {len(filtered)} de {len(data)} velas")
+                        return filtered.copy() if copy else filtered
+                    else:
+                        logger.debug(f"[CACHE HIT] {base_key} - rango exacto")
+                        return data.copy() if copy else data
+                else:
+                    # El cache no cubre completamente - será un miss
+                    # pero mantenemos el cache por si se necesita después
+                    logger.debug(f"[CACHE PARTIAL] {base_key} - cached [{cached_start_ts}, {cached_end_ts}], "
+                               f"requested [{requested_start}, {requested_end}]")
 
             self._misses += 1
             return None
@@ -181,8 +209,11 @@ class OHLCVCache:
             start: str, end: str, data: Any) -> None:
         """
         Almacena datos en el cache.
+
+        Si ya existe una entrada para el mismo base_key, la expande
+        si el nuevo rango es mayor.
         """
-        key = self._make_key(exchange, symbol, timeframe, start, end)
+        base_key = self._make_base_key(exchange, symbol, timeframe)
         mem_size = _estimate_dataframe_memory(data)
 
         # No cachear si el dataset es más grande que el límite total
@@ -194,24 +225,36 @@ class OHLCVCache:
             return
 
         with self._lock:
-            # Si ya existe, actualizar (liberar memoria antigua primero)
-            if key in self._cache:
-                _, _, old_mem_size = self._cache[key]
-                self._current_memory -= old_mem_size
-                self._cache.move_to_end(key)
-                self._cache[key] = (data.copy(), time.time(), mem_size)
-                self._current_memory += mem_size
-                return
+            # Si ya existe, verificar si debemos expandir el rango
+            if base_key in self._cache:
+                old_data, old_timestamp, old_mem_size, old_start, old_end = self._cache[base_key]
+                old_start_ts = pd.Timestamp(old_start)
+                old_end_ts = pd.Timestamp(old_end)
+                new_start_ts = pd.Timestamp(start)
+                new_end_ts = pd.Timestamp(end)
+
+                # Si el nuevo rango es mayor, reemplazar
+                if new_start_ts <= old_start_ts and new_end_ts >= old_end_ts:
+                    self._current_memory -= old_mem_size
+                    self._cache.move_to_end(base_key)
+                    self._cache[base_key] = (data.copy(), time.time(), mem_size, start, end)
+                    self._current_memory += mem_size
+                    logger.debug(f"[CACHE EXPAND] {base_key} - expanded range")
+                    return
+                else:
+                    # El rango existente es igual o mayor, no hacer nada
+                    logger.debug(f"[CACHE SKIP] {base_key} - existing range is sufficient")
+                    return
 
             # Evictar si es necesario
             self._evict_if_needed(mem_size)
 
             # Agregar nuevo
-            self._cache[key] = (data.copy(), time.time(), mem_size)
+            self._cache[base_key] = (data.copy(), time.time(), mem_size, start, end)
             self._current_memory += mem_size
 
             logger.debug(
-                f"Cache set: {key[:8]}... ({mem_size / 1024 / 1024:.2f} MB, "
+                f"[CACHE SET] {base_key} ({mem_size / 1024 / 1024:.2f} MB, "
                 f"total: {self._current_memory / 1024 / 1024:.2f} MB)"
             )
 
@@ -242,7 +285,8 @@ class OHLCVCache:
 
 
 # Instancia global del cache con límite de memoria
-_ohlcv_cache = OHLCVCache(max_size=20, ttl_seconds=300, max_memory_mb=500)
+# TTL de 1 hora - los datos históricos no cambian durante sesiones de trabajo
+_ohlcv_cache = OHLCVCache(max_size=20, ttl_seconds=3600, max_memory_mb=500)
 
 
 def get_ohlcv_cache() -> OHLCVCache:
@@ -280,7 +324,8 @@ class BacktestRequest(BaseModel):
     start_date: str  # ISO format
     end_date: str    # ISO format
     initial_capital: float = 10000.0
-    commission: float = 0.1
+    maker_fee: float = 0.1  # Fee para órdenes limit (%)
+    taker_fee: float = 0.1  # Fee para órdenes market (%)
     slippage: float = 0.05
     parameters: Dict[str, Any] = {}
 
@@ -301,6 +346,9 @@ class OptimizationRequest(BaseModel):
     start_date: str
     end_date: str
     initial_capital: float = 10000.0
+    maker_fee: float = 0.1  # Fee para órdenes limit (%)
+    taker_fee: float = 0.1  # Fee para órdenes market (%)
+    slippage: float = 0.05
     method: str = "grid"  # grid, random, bayesian, genetic
     objective_metric: str = "sharpe_ratio"
     parameters: List[Dict[str, Any]]  # [{name, min, max, step}]
@@ -475,7 +523,8 @@ def run_backtest(params: Dict[str, Any], progress_callback: Callable) -> Dict[st
         symbol=params["symbol"],
         timeframe=params["timeframe"],
         initial_capital=params["initial_capital"],
-        commission=params["commission"],
+        maker_fee=params.get("maker_fee", 0.1),
+        taker_fee=params.get("taker_fee", 0.1),
         slippage=params["slippage"],
         risk_per_trade=2.0,
         max_positions=1,
@@ -524,6 +573,12 @@ def run_backtest(params: Dict[str, Any], progress_callback: Callable) -> Dict[st
             "pnl": t['pnl'],
             "return_pct": t['return_pct'],
             "reason": t['reason'],
+            # Detalles de comisiones
+            "commission_total": t.get('commission_total'),
+            "commission_entry": t.get('commission_entry'),
+            "commission_entry_type": t.get('commission_entry_type'),
+            "commission_exit": t.get('commission_exit'),
+            "commission_exit_type": t.get('commission_exit_type'),
         })
 
     progress_callback(100, 100, "Backtest completado")
@@ -588,8 +643,9 @@ def run_optimization(params: Dict[str, Any], progress_callback: Callable) -> Dic
         "symbol": params["symbol"],
         "timeframe": params["timeframe"],
         "initial_capital": params["initial_capital"],
-        "commission": 0.1,
-        "slippage": 0.05,
+        "maker_fee": params.get("maker_fee", 0.1),
+        "taker_fee": params.get("taker_fee", 0.1),
+        "slippage": params.get("slippage", 0.05),
         "risk_per_trade": 2.0,
         "max_positions": 1,
     }
@@ -716,8 +772,9 @@ def run_optimization(params: Dict[str, Any], progress_callback: Callable) -> Dic
                 symbol=params["symbol"],
                 timeframe=params["timeframe"],
                 initial_capital=params["initial_capital"],
-                commission=0.1,
-                slippage=0.05,
+                maker_fee=params.get("maker_fee", 0.1),
+                taker_fee=params.get("taker_fee", 0.1),
+                slippage=params.get("slippage", 0.05),
                 risk_per_trade=2.0,
                 max_positions=1,
             )
@@ -738,8 +795,9 @@ def run_optimization(params: Dict[str, Any], progress_callback: Callable) -> Dic
                 symbol=params["symbol"],
                 timeframe=params["timeframe"],
                 initial_capital=params["initial_capital"],
-                commission=0.1,
-                slippage=0.05,
+                maker_fee=params.get("maker_fee", 0.1),
+                taker_fee=params.get("taker_fee", 0.1),
+                slippage=params.get("slippage", 0.05),
                 risk_per_trade=2.0,
                 max_positions=1,
             )
@@ -1053,6 +1111,134 @@ def register_backtest_routes(app):
                         "type": "bool",
                         "default": False,
                         "description": "Requerir vela de confirmacion para entrar (puede reducir senales)"
+                    },
+                    # Anti-overfitting parameters
+                    {
+                        "name": "regime_stability_lookback",
+                        "type": "int",
+                        "default": 5,
+                        "min_value": 2,
+                        "max_value": 15,
+                        "step": 1,
+                        "description": "Barras para validar estabilidad del regimen lateral (reduce falsos positivos)"
+                    },
+                    {
+                        "name": "min_bars_between_trades",
+                        "type": "int",
+                        "default": 3,
+                        "min_value": 0,
+                        "max_value": 10,
+                        "step": 1,
+                        "description": "Cooldown entre trades para evitar sobre-operar el mismo movimiento"
+                    },
+                ]
+            )
+        except ImportError:
+            pass
+
+        # Registrar estrategia Mean Reversion LR Long Only (para spot)
+        try:
+            register_strategy_class(
+                strategy_id="mean_reversion_lr_long",
+                strategy_class=MeanReversionLRLongOnlyStrategy,
+                name="Mean Reversion LR (Long Only)",
+                description="Version solo-longs de la estrategia Mean Reversion LR. Ideal para mercados spot donde no se pueden hacer shorts. Opera comprando cuando el precio se desvia hacia abajo de la linea de regresion.",
+                parameters=[
+                    {
+                        "name": "lr_period",
+                        "type": "int",
+                        "default": 20,
+                        "min_value": 10,
+                        "max_value": 50,
+                        "step": 5,
+                        "description": "Periodos para calcular regresion lineal"
+                    },
+                    {
+                        "name": "entry_zscore",
+                        "type": "float",
+                        "default": 2.0,
+                        "min_value": 1.5,
+                        "max_value": 3.0,
+                        "step": 0.25,
+                        "description": "Z-score minimo para entrar (desviacion de la linea)"
+                    },
+                    {
+                        "name": "exit_zscore",
+                        "type": "float",
+                        "default": 0.5,
+                        "min_value": 0.0,
+                        "max_value": 1.0,
+                        "step": 0.1,
+                        "description": "Z-score para salir (precio volvio a la linea)"
+                    },
+                    {
+                        "name": "max_r2",
+                        "type": "float",
+                        "default": 0.4,
+                        "min_value": 0.2,
+                        "max_value": 0.6,
+                        "step": 0.05,
+                        "description": "Maximo R² permitido (filtra mercados en tendencia)"
+                    },
+                    {
+                        "name": "max_slope_pct",
+                        "type": "float",
+                        "default": 0.3,
+                        "min_value": 0.1,
+                        "max_value": 0.5,
+                        "step": 0.05,
+                        "description": "Maxima pendiente normalizada (%) permitida"
+                    },
+                    {
+                        "name": "atr_period",
+                        "type": "int",
+                        "default": 14,
+                        "min_value": 7,
+                        "max_value": 28,
+                        "step": 1,
+                        "description": "Periodo del ATR para stop loss"
+                    },
+                    {
+                        "name": "atr_sl_multiplier",
+                        "type": "float",
+                        "default": 0.5,
+                        "min_value": 0.1,
+                        "max_value": 2.0,
+                        "step": 0.1,
+                        "description": "Multiplicador ATR para stop loss"
+                    },
+                    {
+                        "name": "tp1_ratio",
+                        "type": "float",
+                        "default": 1.5,
+                        "min_value": 1.0,
+                        "max_value": 3.0,
+                        "step": 0.5,
+                        "description": "Ratio riesgo:beneficio para Take Profit"
+                    },
+                    {
+                        "name": "require_candle_confirmation",
+                        "type": "bool",
+                        "default": False,
+                        "description": "Requerir vela de confirmacion para entrar"
+                    },
+                    {
+                        "name": "regime_stability_lookback",
+                        "type": "int",
+                        "default": 5,
+                        "min_value": 2,
+                        "max_value": 15,
+                        "step": 1,
+                        "description": "Barras para validar estabilidad del regimen lateral"
+                    },
+                    {
+                        "name": "min_bars_between_trades",
+                        "type": "int",
+                        "default": 3,
+                        "min_value": 0,
+                        "max_value": 10,
+                        "step": 1,
+                        "description": "Cooldown entre trades para evitar sobre-operar"
                     },
                 ]
             )

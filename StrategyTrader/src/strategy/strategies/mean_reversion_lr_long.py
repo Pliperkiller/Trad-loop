@@ -1,9 +1,12 @@
 """
-Estrategia de Mean Reversion con Regresion Lineal.
+Estrategia de Mean Reversion con Regresion Lineal - Solo Longs.
+
+Version de la estrategia MeanReversionLinearRegression optimizada para mercados spot
+donde solo se pueden ejecutar operaciones long (compra).
 
 Usa regresion lineal para identificar desviaciones del precio respecto a la linea
-de mejor ajuste. Opera cuando el precio se desvia significativamente (z-score alto)
-en mercados laterales (R² bajo).
+de mejor ajuste. Opera cuando el precio se desvia significativamente hacia abajo
+(z-score negativo) en mercados laterales (R² bajo).
 """
 
 import pandas as pd
@@ -14,21 +17,22 @@ from ..base import TradingStrategy, StrategyConfig, TradeSignal
 from src.indicators import TechnicalIndicators, atr
 
 
-class MeanReversionLinearRegressionStrategy(TradingStrategy):
+class MeanReversionLRLongOnlyStrategy(TradingStrategy):
     """
-    Estrategia de Mean Reversion con Regresion Lineal.
+    Estrategia de Mean Reversion con Regresion Lineal - Solo Longs.
 
-    En lugar de usar promedios moviles tradicionales, ajusta una linea de regresion
-    a los precios recientes y opera cuando el precio se desvia significativamente.
+    Disenada para operar en mercados spot donde no se pueden hacer shorts.
+    Ajusta una linea de regresion a los precios recientes y compra cuando
+    el precio se desvia significativamente hacia abajo.
 
     Ventajas:
     - Menor lag que medias moviles
     - R² como filtro de regimen (evita operar en tendencias)
     - Pendiente normalizada para confirmar direccion
+    - Ideal para spot trading
 
     Senales:
     - LONG: R² < max_r2 AND |slope_norm| < max_slope AND zscore < -entry_zscore
-    - SHORT: R² < max_r2 AND |slope_norm| < max_slope AND zscore > entry_zscore
 
     Salidas:
     - |zscore| < exit_zscore (precio volvio a la linea)
@@ -49,7 +53,6 @@ class MeanReversionLinearRegressionStrategy(TradingStrategy):
         tp1_ratio: float = 1.5,
         tp2_ratio: float = 2.5,
         require_candle_confirmation: bool = False,
-        # Anti-overfitting parameters
         regime_stability_lookback: int = 5,
         min_bars_between_trades: int = 3
     ):
@@ -70,10 +73,9 @@ class MeanReversionLinearRegressionStrategy(TradingStrategy):
             min_bars_between_trades: Minimo de barras entre trades para evitar sobre-operar (default 3)
         """
         super().__init__(config)
-        self.lr_period = max(lr_period, 5)  # Minimo 5 periodos
-        self.entry_zscore = max(entry_zscore, 0.5)  # Minimo 0.5
+        self.lr_period = max(lr_period, 5)
+        self.entry_zscore = max(entry_zscore, 0.5)
         self.exit_zscore = max(exit_zscore, 0.0)
-        # IMPORTANTE: Si max_r2 o max_slope_pct son 0, usar defaults sensatos
         self.max_r2 = max_r2 if max_r2 > 0 else 0.4
         self.max_slope_pct = max_slope_pct if max_slope_pct > 0 else 0.3
         self.atr_period = max(atr_period, 5)
@@ -81,36 +83,30 @@ class MeanReversionLinearRegressionStrategy(TradingStrategy):
         self.tp1_ratio = max(tp1_ratio, 0.5)
         self.tp2_ratio = max(tp2_ratio, 1.0)
         self.require_candle_confirmation = require_candle_confirmation
-        # Anti-overfitting
         self.regime_stability_lookback = max(regime_stability_lookback, 2)
         self.min_bars_between_trades = max(min_bars_between_trades, 0)
-        self._last_trade_bar = -9999  # Track ultimo trade para cooldown
+        self._last_trade_bar = -9999
 
     def calculate_indicators(self):
         """Calcula regresion lineal y ATR."""
-        # Regresion lineal
         lr_result = TechnicalIndicators.linear_regression(
             self.data['close'],
             self.data['open'],
             self.lr_period
         )
         self.data['lr_slope'] = lr_result.slope
-        self.data['lr_slope_norm'] = lr_result.slope_normalized_2 * 100  # Como porcentaje
+        self.data['lr_slope_norm'] = lr_result.slope_normalized_2 * 100
         self.data['lr_intercept'] = lr_result.intercept
         self.data['lr_r_squared'] = lr_result.r_squared
         self.data['lr_residual'] = lr_result.residual
         self.data['lr_residual_std'] = lr_result.residual_std
         self.data['lr_zscore'] = lr_result.residual_zscore
 
-        # Precio predicho (para calcular canales)
-        # predicted = intercept + slope * (period - 1)
         self.data['lr_predicted'] = lr_result.intercept + lr_result.slope * (self.lr_period - 1)
 
-        # Canales de regresion (+/- 2 std)
         self.data['lr_upper'] = self.data['lr_predicted'] + (2 * lr_result.residual_std)
         self.data['lr_lower'] = self.data['lr_predicted'] - (2 * lr_result.residual_std)
 
-        # ATR para stops
         self.data['atr'] = atr(
             self.data['high'],
             self.data['low'],
@@ -126,30 +122,23 @@ class MeanReversionLinearRegressionStrategy(TradingStrategy):
         if pd.isna(r2) or pd.isna(slope_norm):
             return False
 
-        # Mercado lateral: R² bajo y pendiente pequena
         return r2 < self.max_r2 and abs(slope_norm) < self.max_slope_pct
 
     def _is_stable_ranging_market(self, i: int) -> bool:
         """
         Verifica que el mercado haya estado en regimen lateral de forma consistente.
-
-        Esto reduce overfitting al evitar entrar en falsos rangos temporales
-        que estan a punto de romper en tendencia.
         """
         lookback = self.regime_stability_lookback
 
-        # Si no hay suficientes barras, usar solo la actual
         if i < lookback:
             return self._is_ranging_market(i)
 
-        # Verificar que R² haya sido consistentemente bajo
         r2_values = self.data['lr_r_squared'].iloc[i - lookback + 1:i + 1]
         slope_values = self.data['lr_slope_norm'].iloc[i - lookback + 1:i + 1].abs()
 
         if r2_values.isna().any() or slope_values.isna().any():
             return False
 
-        # Requiere que TODAS las barras del lookback cumplan el criterio de rango
         r2_ok = (r2_values < self.max_r2).all()
         slope_ok = (slope_values < self.max_slope_pct).all()
 
@@ -165,17 +154,11 @@ class MeanReversionLinearRegressionStrategy(TradingStrategy):
         """Detecta vela alcista."""
         return self.data['close'].iloc[i] > self.data['open'].iloc[i]
 
-    def _is_bearish_candle(self, i: int) -> bool:
-        """Detecta vela bajista."""
-        return self.data['close'].iloc[i] < self.data['open'].iloc[i]
-
     def _find_signal(self, i: int) -> Optional[str]:
-        """Busca senal de entrada con filtros anti-overfitting."""
-        # Filtro 1: Cooldown entre trades
+        """Busca senal de entrada long con filtros anti-overfitting."""
         if self._is_cooldown_active(i):
             return None
 
-        # Filtro 2: Regimen lateral ESTABLE (no solo la barra actual)
         if not self._is_stable_ranging_market(i):
             return None
 
@@ -183,15 +166,10 @@ class MeanReversionLinearRegressionStrategy(TradingStrategy):
         if pd.isna(zscore):
             return None
 
-        # Sobreventa extrema -> LONG
+        # Solo buscamos sobreventa extrema -> LONG
         if zscore < -self.entry_zscore:
             if not self.require_candle_confirmation or self._is_bullish_candle(i):
                 return 'BUY'
-
-        # Sobrecompra extrema -> SHORT
-        elif zscore > self.entry_zscore:
-            if not self.require_candle_confirmation or self._is_bearish_candle(i):
-                return 'SELL'
 
         return None
 
@@ -210,7 +188,7 @@ class MeanReversionLinearRegressionStrategy(TradingStrategy):
         return r2 > 0.5
 
     def generate_signals(self) -> pd.Series:
-        """Genera senales basadas en z-score de regresion lineal."""
+        """Genera senales basadas en z-score de regresion lineal (solo longs)."""
         signals = pd.Series(index=self.data.index, dtype=object)
 
         for i in range(self.lr_period, len(self.data)):
@@ -222,14 +200,13 @@ class MeanReversionLinearRegressionStrategy(TradingStrategy):
 
     def backtest(self):
         """
-        Ejecuta el backtest con gestion de riesgo.
+        Ejecuta el backtest con gestion de riesgo (solo posiciones long).
         Stop loss basado en canal de regresion + ATR.
         Take profits escalonados basados en z-score.
         """
         if self.data is None:
             raise ValueError("Primero debes cargar los datos con load_data()")
 
-        # Reset cooldown tracker al inicio del backtest
         self._last_trade_bar = -9999
 
         self.calculate_indicators()
@@ -242,23 +219,15 @@ class MeanReversionLinearRegressionStrategy(TradingStrategy):
             current_high = current_bar['high']
             current_low = current_bar['low']
 
-            # Gestionar posiciones abiertas
+            # Gestionar posiciones abiertas (solo longs)
             for position in self.positions.copy():
                 # Check stop loss
-                if position.position_type == 'LONG':
-                    if current_low <= position.stop_loss:
-                        self.close_position(position, position.stop_loss, current_time, 'Stop Loss')
-                        continue
-                    if position.take_profit and current_high >= position.take_profit:
-                        self.close_position(position, position.take_profit, current_time, 'Take Profit')
-                        continue
-                else:  # SHORT
-                    if current_high >= position.stop_loss:
-                        self.close_position(position, position.stop_loss, current_time, 'Stop Loss')
-                        continue
-                    if position.take_profit and current_low <= position.take_profit:
-                        self.close_position(position, position.take_profit, current_time, 'Take Profit')
-                        continue
+                if current_low <= position.stop_loss:
+                    self.close_position(position, position.stop_loss, current_time, 'Stop Loss')
+                    continue
+                if position.take_profit and current_high >= position.take_profit:
+                    self.close_position(position, position.take_profit, current_time, 'Take Profit')
+                    continue
 
                 # Salida por reversion completada (zscore cerca de 0)
                 if self._should_exit_by_zscore(i):
@@ -270,21 +239,16 @@ class MeanReversionLinearRegressionStrategy(TradingStrategy):
                     self.close_position(position, current_price, current_time, 'Regime Change')
                     continue
 
-            # Evaluar nuevas senales
+            # Evaluar nuevas senales (solo BUY)
             if pd.notna(signals.iloc[i]) and len(self.positions) < self.config.max_positions:
                 signal_type = signals.iloc[i]
-                lr_lower = self.data['lr_lower'].iloc[i]
-                lr_upper = self.data['lr_upper'].iloc[i]
                 lr_predicted = self.data['lr_predicted'].iloc[i]
                 atr_val = self.data['atr'].iloc[i]
 
-                if pd.isna(lr_lower) or pd.isna(lr_upper) or pd.isna(atr_val) or atr_val == 0:
+                if pd.isna(lr_predicted) or pd.isna(atr_val) or atr_val == 0:
                     continue
 
                 if signal_type == 'BUY':
-                    # Stop loss: debajo del precio de entrada - ATR buffer
-                    # NOTA: Usamos current_price, no lr_lower, porque cuando zscore < -3,
-                    # el precio actual está POR DEBAJO de lr_lower (que está a zscore=-2)
                     stop_loss = current_price - (atr_val * self.atr_sl_multiplier)
                     risk = atr_val * self.atr_sl_multiplier
                     take_profit = current_price + (risk * self.tp1_ratio)
@@ -303,37 +267,10 @@ class MeanReversionLinearRegressionStrategy(TradingStrategy):
                         }
                     )
                     self.open_position(signal, stop_loss, take_profit)
-                    self._last_trade_bar = i  # Actualizar cooldown
-
-                elif signal_type == 'SELL':
-                    # Stop loss: encima del precio de entrada + ATR buffer
-                    # NOTA: Usamos current_price, no lr_upper, porque cuando zscore > +3,
-                    # el precio actual está POR ENCIMA de lr_upper (que está a zscore=+2)
-                    stop_loss = current_price + (atr_val * self.atr_sl_multiplier)
-                    risk = atr_val * self.atr_sl_multiplier
-                    take_profit = current_price - (risk * self.tp1_ratio)
-
-                    signal = TradeSignal(
-                        timestamp=current_time,
-                        signal='SHORT',
-                        price=current_price,
-                        confidence=1.0,
-                        indicators={
-                            'zscore': self.data['lr_zscore'].iloc[i],
-                            'r_squared': self.data['lr_r_squared'].iloc[i],
-                            'slope_norm': self.data['lr_slope_norm'].iloc[i],
-                            'predicted': lr_predicted,
-                            'atr': atr_val
-                        }
-                    )
-                    self.open_position(signal, stop_loss, take_profit)
-                    self._last_trade_bar = i  # Actualizar cooldown
+                    self._last_trade_bar = i
 
             # Actualizar equity curve
             total_equity = self.capital
             for position in self.positions:
-                if position.position_type == 'LONG':
-                    total_equity += position.quantity * current_price
-                else:
-                    total_equity += position.quantity * (2 * position.entry_price - current_price)
+                total_equity += position.quantity * current_price
             self.equity_curve.append(total_equity)

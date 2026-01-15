@@ -193,7 +193,7 @@ def demo_custom_strategies():
     
     metrics1 = strategy1.get_performance_metrics()
     print(f"  Trades: {metrics1.get('total_trades', 0)}")
-    print(f"  Win Rate: {metrics1.get('win_rate', 0):.2f}%")
+    print(f"  Win Rate: {metrics1.get('win_rate_pct', 0):.2f}%")
     print(f"  Sharpe: {metrics1.get('sharpe_ratio', 0):.2f}")
     print(f"  Return: {metrics1.get('total_return_pct', 0):.2f}%")
     
@@ -205,7 +205,7 @@ def demo_custom_strategies():
     
     metrics2 = strategy2.get_performance_metrics()
     print(f"  Trades: {metrics2.get('total_trades', 0)}")
-    print(f"  Win Rate: {metrics2.get('win_rate', 0):.2f}%")
+    print(f"  Win Rate: {metrics2.get('win_rate_pct', 0):.2f}%")
     print(f"  Sharpe: {metrics2.get('sharpe_ratio', 0):.2f}")
     print(f"  Return: {metrics2.get('total_return_pct', 0):.2f}%")
     
