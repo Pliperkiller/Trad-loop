@@ -1,5 +1,7 @@
 # Guía de Métricas de Performance
 
+El sistema incluye 36+ métricas de análisis cuantitativo organizadas en categorías.
+
 ## Métricas de Rentabilidad
 
 ### Total Return
@@ -67,11 +69,19 @@
 **Ejemplo**: VaR 95% = $1,000 significa:
 - 95% de probabilidad de no perder más de $1,000 en un período
 
+### Conditional VaR (CVaR / Expected Shortfall)
+**Qué mide**: Pérdida promedio cuando se supera el VaR
+
+**Interpretación**:
+- Más conservador que VaR
+- Captura el riesgo de cola
+- Siempre >= VaR
+
 ---
 
 ## Métricas Ajustadas por Riesgo
 
-### Sharpe Ratio ⭐ (La Más Importante)
+### Sharpe Ratio (La Más Importante)
 **Qué mide**: Retorno ajustado por riesgo
 
 **Fórmula**: `(Retorno - Tasa Libre Riesgo) / Volatilidad`
@@ -79,7 +89,7 @@
 **Interpretación**:
 - **< 0**: Peor que no hacer nada
 - **0-1**: Subóptimo
-- **1-2**: Bueno ✅
+- **1-2**: Bueno
 - **2-3**: Muy bueno
 - **> 3**: Excelente (muy raro)
 
@@ -103,6 +113,16 @@
 
 **Ejemplo**: Calmar = 2.5 significa ganas 2.5% anual por cada 1% de drawdown máximo
 
+### Omega Ratio
+**Qué mide**: Ratio de ganancias ponderadas sobre pérdidas ponderadas
+
+**Fórmula**: `Integral de retornos sobre threshold / Integral de retornos bajo threshold`
+
+**Interpretación**:
+- **> 1**: Estrategia rentable
+- **> 2**: Muy bueno
+- **> 3**: Excelente
+
 ---
 
 ## Métricas de Consistencia
@@ -122,9 +142,9 @@
 **Fórmula**: `Suma Ganancias / Suma Pérdidas`
 
 **Interpretación**:
-- **< 1.0**: Estrategia perdedora ❌
+- **< 1.0**: Estrategia perdedora
 - **1.0-1.5**: Marginal
-- **1.5-2.0**: Bueno ✅
+- **1.5-2.0**: Bueno
 - **2.0-3.0**: Muy bueno
 - **> 3.0**: Excelente
 
@@ -145,6 +165,94 @@ Win Rate = 40% → R/R debe ser > 1.5
 Win Rate = 60% → R/R puede ser < 1
 ```
 
+### Recovery Factor
+**Qué mide**: Total Return / Maximum Drawdown
+
+**Interpretación**:
+- **> 3**: Excelente
+- **2-3**: Muy bueno
+- **1-2**: Aceptable
+- **< 1**: Malo
+
+---
+
+## Métricas de Mean Reversion
+
+Estas métricas son específicas para estrategias de mean reversion y miden qué tan bien la estrategia captura movimientos de reversión a la media.
+
+### MRQS (Mean Reversion Quality Score)
+**Qué mide**: Score compuesto de calidad de mean reversion
+
+**Componentes**:
+- Target Hit Rate
+- Average Excursion
+- Time to Target
+- Drawdown durante trade
+
+**Interpretación**:
+- **> 0.7**: Excelente captura de mean reversion
+- **0.5-0.7**: Bueno
+- **0.3-0.5**: Aceptable
+- **< 0.3**: Necesita mejoras
+
+### Target Hit Rate
+**Qué mide**: Porcentaje de trades que alcanzan el target de reversión
+
+**Fórmula**: `Trades que alcanzan target / Total trades × 100`
+
+**Interpretación**:
+- **> 70%**: Excelente
+- **50-70%**: Bueno
+- **< 50%**: Revisar señales de entrada
+
+### Average Excursion
+**Qué mide**: Desviación promedio del precio vs. target durante el trade
+
+**Interpretación**:
+- Menor es mejor
+- Indica eficiencia de entrada
+- Excursión alta = entradas prematuras
+
+### Maximum Favorable Excursion (MFE)
+**Qué mide**: Máxima ganancia no realizada durante un trade
+
+**Uso**: Optimizar take profits
+
+### Maximum Adverse Excursion (MAE)
+**Qué mide**: Máxima pérdida no realizada durante un trade
+
+**Uso**: Optimizar stop losses
+
+---
+
+## Métricas Adicionales
+
+### Consecutive Wins/Losses
+**Qué mide**: Rachas máximas de trades ganadores/perdedores
+
+**Uso**: Evaluar consistencia y riesgo de ruina
+
+### Average Trade Duration
+**Qué mide**: Tiempo promedio que dura un trade
+
+**Uso**: Determinar si coincide con el estilo de trading deseado
+
+### Trades Per Month
+**Qué mide**: Frecuencia de operaciones
+
+**Interpretación**:
+- Muy bajo: Puede tener problemas de validez estadística
+- Muy alto: Comisiones pueden impactar resultados
+
+### Ulcer Index
+**Qué mide**: Profundidad y duración de drawdowns
+
+**Fórmula**: `sqrt(mean(drawdown^2))`
+
+**Interpretación**:
+- Menor es mejor
+- Captura el "dolor" de los drawdowns
+
 ---
 
 ## Checklist de Viabilidad
@@ -152,14 +260,14 @@ Win Rate = 60% → R/R puede ser < 1
 Una estrategia se considera **VIABLE** si cumple:
 
 ```
-✅ Sharpe Ratio > 1.0
-✅ Profit Factor > 1.5
-✅ Max Drawdown < 30%
-✅ Win Rate > 40% (o Risk/Reward > 2)
-✅ Total Trades > 30 (validez estadística)
-✅ Calmar Ratio > 1.0
-✅ CAGR > Tasa libre de riesgo + 5%
-✅ Recovery Factor > 2.0
+Sharpe Ratio > 1.0
+Profit Factor > 1.5
+Max Drawdown < 30%
+Win Rate > 40% (o Risk/Reward > 2)
+Total Trades > 30 (validez estadística)
+Calmar Ratio > 1.0
+CAGR > Tasa libre de riesgo + 5%
+Recovery Factor > 2.0
 ```
 
 **Si cumples 6 o más → Estrategia viable**
@@ -176,7 +284,8 @@ Una estrategia se considera **VIABLE** si cumple:
 2. **Evaluación de Riesgo**: Verifica Max Drawdown
 3. **Eficiencia**: Calcula Sharpe Ratio
 4. **Consistencia**: Analiza Profit Factor
-5. **Decisión**: Usa el checklist de viabilidad
+5. **Mean Reversion** (si aplica): Revisa MRQS y Target Hit Rate
+6. **Decisión**: Usa el checklist de viabilidad
 
 ### Ejemplo Práctico
 
@@ -215,6 +324,35 @@ Estrategia B:
 ### 4. Solo Mirar Win Rate
 **Señal**: Win Rate alto pero Profit Factor < 1.5
 **Solución**: Revisar tamaño de pérdidas
+
+### 5. Ignorar Costos
+**Señal**: Buenos resultados en backtest, malos en vivo
+**Solución**: Incluir comisiones y slippage realistas
+
+---
+
+## Código de Uso
+
+```python
+from src.performance import PerformanceAnalyzer
+
+# Crear analizador
+analyzer = PerformanceAnalyzer(
+    equity_curve=strategy.equity_curve,
+    trades=pd.DataFrame(strategy.closed_trades),
+    initial_capital=10000
+)
+
+# Obtener todas las métricas
+metrics = analyzer.calculate_all_metrics()
+
+# Imprimir reporte
+analyzer.print_report()
+
+# Acceder a métricas específicas
+sharpe = metrics['sharpe_ratio']
+mrqs = metrics.get('mrqs', None)  # Solo si aplica mean reversion
+```
 
 ---
 

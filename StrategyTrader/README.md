@@ -2,24 +2,28 @@
 
 Sistema completo de desarrollo, backtesting, análisis y optimización de estrategias de trading algorítmico en Python.
 
-![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)
+![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ## Características Principales
 
 - **Sistema de Trading Modular**: Framework base para crear estrategias personalizadas
-- **Indicadores Técnicos**: Biblioteca completa de indicadores (SMA, EMA, RSI, MACD, Bollinger Bands, ATR, Stochastic)
+- **Indicadores Técnicos**: Biblioteca completa de 30+ indicadores (SMA, EMA, RSI, MACD, Bollinger Bands, ATR, Stochastic, Supertrend, Ichimoku, etc.)
 - **Backtesting Robusto**: Motor de backtesting con gestión de riesgo, stop loss y take profit
-- **Análisis de Performance**: +30 métricas cuantitativas (Sharpe, Sortino, Calmar, Profit Factor, etc.)
-- **Visualizaciones Avanzadas**: Dashboards interactivos y gráficos de análisis
-- **Optimización Multi-Algoritmo**: 4 métodos de optimización de parámetros
+- **Análisis de Performance**: 36+ métricas cuantitativas (Sharpe, Sortino, Calmar, Profit Factor, métricas de mean reversion, etc.)
+- **Optimización Multi-Algoritmo**: 5 métodos de optimización con soporte de paralelización
 - **Walk Forward Validation**: Validación robusta anti-overfitting
+- **Paper Trading**: Motor de simulación en tiempo real con 17+ tipos de órdenes
+- **API REST/WebSocket**: Integración completa para aplicaciones frontend
+- **Multi-Broker**: Soporte para 100+ exchanges vía CCXT e Interactive Brokers
 
 ## Tabla de Contenidos
 
 - [Instalación](#instalación)
 - [Quick Start](#quick-start)
 - [Componentes](#componentes)
+- [API REST](#api-rest)
+- [Paper Trading](#paper-trading)
 - [Ejemplo Completo](#ejemplo-completo)
 - [Métricas de Performance](#métricas-de-performance)
 - [Optimización](#optimización)
@@ -31,7 +35,7 @@ Sistema completo de desarrollo, backtesting, análisis y optimización de estrat
 
 ### Requisitos
 
-- Python 3.8 o superior
+- Python 3.10 o superior
 - pip
 
 ### Instalación Básica
@@ -66,7 +70,7 @@ class MiEstrategia(TradingStrategy):
         super().__init__(config)
         self.fast_period = fast_period
         self.slow_period = slow_period
-    
+
     def calculate_indicators(self):
         self.data['ema_fast'] = TechnicalIndicators.ema(
             self.data['close'], self.fast_period
@@ -74,18 +78,18 @@ class MiEstrategia(TradingStrategy):
         self.data['ema_slow'] = TechnicalIndicators.ema(
             self.data['close'], self.slow_period
         )
-    
+
     def generate_signals(self) -> pd.Series:
         signals = pd.Series(index=self.data.index, dtype=object)
-        
+
         cross = np.where(
             self.data['ema_fast'] > self.data['ema_slow'], 1, -1
         )
         cross_signal = pd.Series(cross).diff()
-        
+
         signals[cross_signal == 2] = 'BUY'
         signals[cross_signal == -2] = 'SELL'
-        
+
         return signals
 
 # Configurar y ejecutar
@@ -148,8 +152,8 @@ optimizer = StrategyOptimizer(
 optimizer.add_parameter('fast_period', 'int', low=5, high=20, step=5)
 optimizer.add_parameter('slow_period', 'int', low=20, high=50, step=10)
 
-# Optimizar (elige un método)
-result = optimizer.bayesian_optimization(n_calls=50)
+# Optimizar con paralelización
+result = optimizer.bayesian_optimization(n_calls=50, n_jobs=4)
 result.print_summary()
 
 print(f"Mejores parámetros: {result.best_params}")
@@ -157,97 +161,86 @@ print(f"Mejores parámetros: {result.best_params}")
 
 ## Componentes
 
-### 1. Strategy Framework (`src/strategy.py`)
+### 1. Strategy Framework (`src/strategy/`)
 
 Sistema base para crear estrategias de trading:
 
 - **TradingStrategy**: Clase abstracta base
-- **TechnicalIndicators**: Biblioteca de indicadores técnicos
 - **StrategyConfig**: Configuración de estrategia
-- **TradeSignal**: Estructura de señales de trading
 - **Position**: Gestión de posiciones
+- **SignalGenerator**: Generación de señales
 
-**Indicadores Disponibles:**
-- SMA (Simple Moving Average)
-- EMA (Exponential Moving Average)
+### 2. Indicadores Técnicos (`src/indicators/`)
+
+30+ indicadores técnicos organizados por categoría:
+
+**Trend:**
+- SMA, EMA, WMA, VWMA
+- Parabolic SAR
+- Supertrend
+- Ichimoku Cloud
+- ADX
+
+**Momentum:**
 - RSI (Relative Strength Index)
-- MACD (Moving Average Convergence Divergence)
+- MACD
+- Stochastic Oscillator
+- Williams %R
+- CCI (Commodity Channel Index)
+- ROC (Rate of Change)
+
+**Volatility:**
 - Bollinger Bands
 - ATR (Average True Range)
-- Stochastic Oscillator
+- Keltner Channels
+- Donchian Channels
 
-### 2. Performance Analysis (`src/performance.py`)
+**Volume:**
+- OBV (On Balance Volume)
+- CMF (Chaikin Money Flow)
+- MFI (Money Flow Index)
+- VWAP
 
-Análisis cuantitativo exhaustivo:
+### 3. Performance Analysis (`src/performance.py`)
+
+36+ métricas de análisis cuantitativo:
 
 **Métricas de Rentabilidad:**
-- Total Return
-- CAGR (Compound Annual Growth Rate)
-- Expectancy
+- Total Return, CAGR, Expectancy
 
 **Métricas de Riesgo:**
-- Maximum Drawdown
-- Volatilidad
-- Value at Risk (VaR)
-- Conditional VaR
+- Maximum Drawdown, Volatilidad, VaR, CVaR
 
 **Métricas Ajustadas por Riesgo:**
-- Sharpe Ratio
-- Sortino Ratio
-- Calmar Ratio
-- Omega Ratio
+- Sharpe Ratio, Sortino Ratio, Calmar Ratio, Omega Ratio
 
 **Métricas de Consistencia:**
-- Win Rate
-- Profit Factor
-- Risk/Reward Ratio
-- Recovery Factor
+- Win Rate, Profit Factor, Risk/Reward Ratio, Recovery Factor
 
-### 3. Visualization (`src/performance.py` - PerformanceVisualizer)
+**Métricas de Mean Reversion:**
+- MRQS (Mean Reversion Quality Score)
+- Target Hit Rate, Average Excursion
 
-Visualizaciones profesionales:
+### 4. Optimization (`src/optimizer.py`, `src/optimizers/`)
 
-- **Dashboard Completo**: 6 gráficos de análisis
-- **Métricas Rodantes**: Evolución temporal de KPIs
-- **Análisis de Trades**: Distribución de wins/losses
-- **Análisis de Riesgo**: Drawdowns, VaR, normalidad
-
-### 4. Optimization (`src/optimizer.py`)
-
-4 métodos de optimización de parámetros:
+5 métodos de optimización con soporte de paralelización (`n_jobs`):
 
 #### Grid Search
-- **Uso**: Espacios pequeños, 2-3 parámetros
-- **Pros**: Encuentra óptimo global garantizado
-- **Contras**: Computacionalmente costoso
-
 ```python
 result = optimizer.grid_search(verbose=True)
 ```
 
 #### Random Search
-- **Uso**: Exploración rápida, 3-5 parámetros
-- **Pros**: Eficiente, simple
-- **Contras**: No garantías
-
 ```python
-result = optimizer.random_search(n_iter=100, verbose=True)
+result = optimizer.random_search(n_iter=100, n_jobs=4, verbose=True)
 ```
 
 #### Bayesian Optimization
-- **Uso**: Parámetros continuos, presupuesto limitado
-- **Pros**: Muy eficiente, sample efficient
-- **Contras**: Requiere scikit-optimize
-
 ```python
-result = optimizer.bayesian_optimization(n_calls=50, verbose=True)
+result = optimizer.bayesian_optimization(n_calls=50, n_jobs=4, verbose=True)
 ```
 
 #### Genetic Algorithm
-- **Uso**: Espacios complejos, 4-8 parámetros
-- **Pros**: Robusto, evita óptimos locales
-- **Contras**: Muchas evaluaciones
-
 ```python
 result = optimizer.genetic_algorithm(
     population_size=20,
@@ -257,30 +250,77 @@ result = optimizer.genetic_algorithm(
 ```
 
 #### Walk Forward Optimization
-- **Uso**: Validación final robusta
-- **Pros**: Evita overfitting
-- **Contras**: Muy costoso computacionalmente
-
 ```python
 wf_result = optimizer.walk_forward_optimization(
     optimization_method='bayesian',
     n_splits=5,
-    train_size=0.6
+    train_size=0.6,
+    n_jobs=4
 )
 ```
 
-## Ejemplo Completo
+### 5. Paper Trading (`src/paper_trading/`)
 
-Ver `examples/complete_workflow.py` para un ejemplo completo de:
-1. Carga de datos
-2. Creación de estrategia personalizada
-3. Backtesting
-4. Análisis de performance
-5. Optimización de parámetros
-6. Walk forward validation
+Motor de simulación en tiempo real:
+
+- 17+ tipos de órdenes (Market, Limit, Stop, OCO, Trailing, Bracket, etc.)
+- Gestión de posiciones y riesgo
+- WebSocket para actualizaciones en vivo
+- Integración con datos de mercado en tiempo real
+
+### 6. Broker Bridge (`src/broker_bridge/`)
+
+Capa de abstracción multi-broker:
+
+- **CCXT Adapter**: 100+ exchanges de criptomonedas
+- **IBKR Adapter**: Interactive Brokers para mercados tradicionales
+- **Unified Executor**: API unificada para todos los brokers
+
+### 7. Risk Management (`src/risk_management/`)
+
+- Position Sizing (Fixed, Kelly, Volatility-based)
+- Límites de exposición
+- VaR y correlación de portfolio
+- Stop Loss dinámico
+
+### 8. Portfolio Management (`src/portfolio/`)
+
+- Asset allocation multi-activo
+- Rebalanceo automático
+- Métricas de portfolio
+
+## API REST
+
+### Endpoints Principales
+
+```
+GET  /api/v1/exchanges                    # Exchanges disponibles
+GET  /api/v1/symbols/{exchange}           # Símbolos por exchange
+GET  /api/v1/ohlcv/{exchange}/{symbol}    # Datos OHLCV
+GET  /api/v1/strategies/available         # Estrategias disponibles
+
+POST /api/v1/backtest                     # Ejecutar backtest (async)
+GET  /api/v1/backtest/{jobId}             # Estado del backtest
+
+POST /api/v1/optimize                     # Ejecutar optimización (async)
+GET  /api/v1/optimize/{jobId}             # Estado de optimización
+
+POST /api/v1/paper-trading/start          # Iniciar paper trading
+POST /api/v1/paper-trading/stop           # Detener paper trading
+```
+
+### WebSocket
+
+```
+WS /ws/paper-trading/{sessionId}          # Paper trading en vivo
+WS /ws/live-candles                       # Velas en tiempo real
+```
+
+### Iniciar el Servidor
 
 ```bash
-python examples/complete_workflow.py
+cd Trad-loop/StrategyTrader
+uvicorn src.api:app --host 0.0.0.0 --port 8000
 ```
 
 ## Métricas de Performance
@@ -322,33 +362,43 @@ Una estrategia se considera **VIABLE** si cumple:
 ## Estructura del Proyecto
 
 ```
-strategy-trader/
-│
+StrategyTrader/
 ├── src/
-│   ├── __init__.py
-│   ├── strategy.py          # Framework de estrategias
-│   ├── performance.py       # Análisis y visualización
-│   └── optimizer.py         # Optimización de parámetros
+│   ├── strategy/              # Framework de estrategias
+│   │   ├── base.py            # Clase base TradingStrategy
+│   │   ├── strategies/        # Estrategias implementadas
+│   │   └── signals.py         # Generación de señales
+│   │
+│   ├── indicators/            # 30+ indicadores técnicos
+│   │   ├── technical/         # Indicadores técnicos
+│   │   └── fundamental/       # APIs de datos fundamentales
+│   │
+│   ├── optimizers/            # Métodos de optimización
+│   │   ├── bayesian.py        # Optimización Bayesiana (paralela)
+│   │   ├── genetic.py         # Algoritmo genético
+│   │   ├── random_search.py   # Búsqueda aleatoria (paralela)
+│   │   └── walk_forward.py    # Walk Forward Validation
+│   │
+│   ├── paper_trading/         # Motor de paper trading
+│   │   ├── engine.py          # Motor principal
+│   │   └── orders/            # 17+ tipos de órdenes
+│   │
+│   ├── broker_bridge/         # Integración multi-broker
+│   │   ├── adapters/          # CCXT, IBKR
+│   │   └── unified_executor.py
+│   │
+│   ├── risk_management/       # Gestión de riesgo
+│   ├── portfolio/             # Gestión de portfolio
+│   ├── stress_testing/        # Monte Carlo, escenarios
+│   │
+│   ├── api.py                 # API REST FastAPI
+│   ├── websocket_api.py       # WebSocket endpoints
+│   ├── performance.py         # 36+ métricas
+│   └── optimizer.py           # Orchestrador de optimización
 │
-├── examples/
-│   ├── complete_workflow.py # Ejemplo completo
-│   ├── custom_strategy.py   # Estrategia personalizada
-│   └── optimization_demo.py # Demo de optimización
-│
-├── tests/
-│   ├── test_strategy.py
-│   ├── test_performance.py
-│   └── test_optimizer.py
-│
-├── docs/
-│   ├── strategy_guide.md
-│   ├── metrics_guide.md
-│   └── optimization_guide.md
-│
+├── tests/                     # Tests con pytest
+├── docs/                      # Documentación
 ├── requirements.txt
-├── requirements-full.txt
-├── setup.py
-├── LICENSE
 └── README.md
 ```
 
@@ -369,7 +419,7 @@ Random Search (exploración) → Bayesian Opt (refinamiento) → Grid Search (ve
 ### 3. Validación
 
 ```
-Walk Forward Optimization → Análisis de Robustez → Trading en Papel
+Walk Forward Optimization → Análisis de Robustez → Paper Trading
 ```
 
 ### 4. Producción
@@ -405,7 +455,6 @@ Trading en Vivo con Capital Pequeño → Monitoreo → Escalamiento
 
 - [Guía de Estrategias](docs/strategy_guide.md)
 - [Guía de Métricas](docs/metrics_guide.md)
-- [Guía de Optimización](docs/optimization_guide.md)
 
 ## Contribuir
 
@@ -416,17 +465,6 @@ Las contribuciones son bienvenidas. Por favor:
 3. Commit tus cambios (`git commit -m 'Añadir nueva funcionalidad'`)
 4. Push a la rama (`git push origin feature/nueva-funcionalidad`)
 5. Abre un Pull Request
-
-## Roadmap
-
-- [ ] Integración con APIs de exchanges (Binance, Coinbase, etc.)
-- [ ] Trading en vivo
-- [ ] Backtesting multi-asset
-- [ ] Análisis de correlaciones
-- [ ] Machine Learning integration
-- [ ] Dashboard web interactivo
-- [ ] Alertas y notificaciones
-- [ ] Backtesting con datos de order book
 
 ## Licencia
 
@@ -439,7 +477,3 @@ Este software es solo para fines educativos y de investigación. El trading conl
 ## Contacto
 
 Para preguntas, sugerencias o reportar bugs, por favor abre un issue en GitHub.
-
----
-
-**Hecho con ❤️ para la comunidad de trading algorítmico**
