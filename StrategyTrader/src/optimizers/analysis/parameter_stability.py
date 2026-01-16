@@ -85,8 +85,11 @@ class ParameterStabilityAnalyzer:
         if not splits:
             return {}
 
-        # Extract all parameters
-        all_params = [s.best_params for s in splits]
+        # Extract all parameters (handle both dict and object)
+        all_params = [
+            s.get('best_params', {}) if isinstance(s, dict) else s.best_params
+            for s in splits
+        ]
         if not all_params:
             return {}
 

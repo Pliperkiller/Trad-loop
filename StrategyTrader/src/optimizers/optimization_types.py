@@ -68,12 +68,21 @@ class WalkForwardResult:
 
         print(f"\n[METRICAS AGREGADAS OUT-OF-SAMPLE]")
         for metric, value in self.aggregated_metrics.items():
-            if 'pct' in metric or 'rate' in metric:
+            if isinstance(value, (dict, list)):
+                continue  # Skip complex types
+            elif isinstance(value, str):
+                print(f"  {metric}: {value}")
+            elif value is None:
+                print(f"  {metric}: N/A")
+            elif 'pct' in metric or 'rate' in metric:
                 print(f"  {metric}: {value:.2f}%")
             elif 'ratio' in metric:
                 print(f"  {metric}: {value:.2f}")
             else:
-                print(f"  {metric}: {value:.4f}")
+                try:
+                    print(f"  {metric}: {value:.4f}")
+                except (TypeError, ValueError):
+                    print(f"  {metric}: {value}")
 
         print(f"\n[ROBUSTEZ]")
         print(f"  Score de Robustez: {self.robustness_score:.2f}")

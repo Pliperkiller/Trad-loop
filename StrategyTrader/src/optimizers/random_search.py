@@ -11,6 +11,53 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from .optimization_types import OptimizationResult, ParameterSpace
 
 
+def _evaluate_params_worker(strategy_class, config_template, data, objective_metric, params_dict):
+    """
+    Función de nivel de módulo para evaluación paralela.
+    Puede ser serializada por ProcessPoolExecutor.
+    """
+    from src.strategy import StrategyConfig
+
+    try:
+        # Crear config object desde dict si es necesario
+        if isinstance(config_template, dict):
+            config = StrategyConfig(**config_template)
+        else:
+            config = config_template
+
+        # Crear instancia de estrategia con parámetros
+        strategy = strategy_class(config, **params_dict)
+
+        # Ejecutar backtest
+        strategy.load_data(data)
+        strategy.backtest()
+
+        # Obtener métricas
+        metrics = strategy.get_performance_metrics()
+
+        # Obtener score de la métrica objetivo
+        score = metrics.get(objective_metric, -np.inf)
+
+        # Validaciones adicionales
+        if metrics.get('total_trades', 0) < 10:
+            score = -np.inf
+
+        return {
+            'params': params_dict,
+            'score': score,
+            'metrics': metrics,
+            'error': None
+        }
+
+    except Exception as e:
+        return {
+            'params': params_dict,
+            'score': -np.inf,
+            'metrics': {},
+            'error': str(e)
+        }
+
+
 def _generate_random_params(parameter_space: List[ParameterSpace]) -> Dict[str, Any]:
     """
     Genera un conjunto de parámetros aleatorios respetando el step.
@@ -126,16 +173,29 @@ def random_search(self, n_iter: int = 100, verbose: bool = True,
     # Generar todos los conjuntos de parámetros por adelantado
     all_params = [_generate_random_params(self.parameter_space) for _ in range(n_iter)]
 
+    # Datos necesarios para paralelización (serializables)
+    strategy_class = self.strategy_class
+    config_template = self.config_template
+    data_for_workers = self.data.copy() if hasattr(self.data, 'copy') else self.data
+    objective_metric = self.objective_metric
+
     results = []
     completed = 0
 
     # Ejecutar evaluaciones en paralelo
     if n_jobs > 1 and n_iter > 1:
-        # Modo paralelo
+        # Modo paralelo - usar función de nivel de módulo
         with ProcessPoolExecutor(max_workers=n_jobs) as executor:
             # Enviar todas las tareas
             future_to_params = {
-                executor.submit(self._evaluate_parameters_detailed, params): params
+                executor.submit(
+                    _evaluate_params_worker,
+                    strategy_class,
+                    config_template,
+                    data_for_workers,
+                    objective_metric,
+                    params
+                ): params
                 for params in all_params
             }
 
@@ -164,7 +224,7 @@ def random_search(self, n_iter: int = 100, verbose: bool = True,
                 except Exception as e:
                     if verbose:
                         print(f"Error en evaluación: {e}")
-                    results.append({'score': -1e10})
+                    results.append({'score': -1e10, 'params': future_to_params[future]})
                     completed += 1
     else:
         # Modo secuencial (fallback para n_jobs=1 o debug)
@@ -185,8 +245,14 @@ def random_search(self, n_iter: int = 100, verbose: bool = True,
                 best_so_far = max(valid_scores) if valid_scores else 0
                 print(f"Progreso: {completed}/{n_iter} ({completed/n_iter*100:.1f}%) - Best: {best_so_far:.4f}")
 
-    # Procesar resultados
-    results_df = pd.DataFrame(results)
+    # Procesar resultados - expandir 'params' dict a columnas
+    expanded_results = []
+    for r in results:
+        row = r.get('params', {}).copy() if isinstance(r.get('params'), dict) else {}
+        row['score'] = r.get('score', -1e10)
+        expanded_results.append(row)
+
+    results_df = pd.DataFrame(expanded_results)
 
     if results_df.empty or 'score' not in results_df.columns:
         return OptimizationResult(

@@ -224,7 +224,12 @@ def walk_forward_optimization(
             oos_score = oos_result.get('score', -np.inf)
 
             # Obtener metricas adicionales OOS
-            strategy = optimizer.strategy_class(optimizer.config_template, **best_params)
+            from src.strategy import StrategyConfig
+            if isinstance(optimizer.config_template, dict):
+                config = StrategyConfig(**optimizer.config_template)
+            else:
+                config = optimizer.config_template
+            strategy = optimizer.strategy_class(config, **best_params)
             strategy.load_data(test_data)
             strategy.backtest()
             oos_metrics = strategy.get_performance_metrics()

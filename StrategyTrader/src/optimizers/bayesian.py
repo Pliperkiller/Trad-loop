@@ -22,6 +22,51 @@ _snap_to_step = snap_to_step
 _convert_point_to_params = convert_point_to_params
 
 
+def _evaluate_params_worker(strategy_class, config_template, data, objective_metric, params_dict):
+    """
+    Función de nivel de módulo para evaluación paralela.
+    Puede ser serializada por ProcessPoolExecutor.
+    """
+    from src.strategy import StrategyConfig
+
+    try:
+        # Crear config object desde dict si es necesario
+        if isinstance(config_template, dict):
+            config = StrategyConfig(**config_template)
+        else:
+            config = config_template
+
+        # Crear instancia de estrategia con parámetros
+        strategy = strategy_class(config, **params_dict)
+
+        # Ejecutar backtest
+        strategy.load_data(data)
+        strategy.backtest()
+
+        # Obtener métricas
+        metrics = strategy.get_performance_metrics()
+
+        # Obtener score de la métrica objetivo
+        score = metrics.get(objective_metric, -np.inf)
+
+        # Validaciones adicionales
+        if metrics.get('total_trades', 0) < 10:
+            score = -np.inf  # Penalizar estrategias con muy pocos trades
+
+        return {
+            'params': params_dict,
+            'score': score,
+            'error': None
+        }
+
+    except Exception as e:
+        return {
+            'params': params_dict,
+            'score': -np.inf,
+            'error': str(e)
+        }
+
+
 def bayesian_optimization(self, n_calls: int = 50, n_initial_points: int = 10,
                          verbose: bool = True,
                          progress_callback: Optional[Callable[[int, int], None]] = None,
@@ -152,8 +197,8 @@ def bayesian_optimization(self, n_calls: int = 50, n_initial_points: int = 10,
         clamped = max(-10.0, min(10.0, score))
         return -clamped  # Skopt minimiza
 
-    def evaluate_single(params_dict: Dict) -> Dict:
-        """Evalúa un conjunto de parámetros y retorna resultado."""
+    def evaluate_single_sequential(params_dict: Dict) -> Dict:
+        """Evalúa un conjunto de parámetros (modo secuencial)."""
         try:
             score = self._evaluate_parameters(params_dict)
             return {
@@ -168,6 +213,12 @@ def bayesian_optimization(self, n_calls: int = 50, n_initial_points: int = 10,
                 'safe_score': LARGE_PENALTY,
                 'error': str(e)
             }
+
+    # Datos necesarios para paralelización (serializables)
+    strategy_class = self.strategy_class
+    config_template = self.config_template
+    data_for_workers = self.data.copy() if hasattr(self.data, 'copy') else self.data
+    objective_metric = self.objective_metric
 
     # Resultados acumulados
     all_results = []
@@ -199,10 +250,17 @@ def bayesian_optimization(self, n_calls: int = 50, n_initial_points: int = 10,
         results_batch = []
 
         if n_jobs > 1 and current_batch_size > 1:
-            # Modo paralelo
+            # Modo paralelo - usar función de nivel de módulo
             with ProcessPoolExecutor(max_workers=min(n_jobs, current_batch_size)) as executor:
                 future_to_idx = {
-                    executor.submit(evaluate_single, params): idx
+                    executor.submit(
+                        _evaluate_params_worker,
+                        strategy_class,
+                        config_template,
+                        data_for_workers,
+                        objective_metric,
+                        params
+                    ): idx
                     for idx, params in enumerate(params_list)
                 }
 
@@ -210,6 +268,7 @@ def bayesian_optimization(self, n_calls: int = 50, n_initial_points: int = 10,
                     idx = future_to_idx[future]
                     try:
                         result = future.result()
+                        result['safe_score'] = safe_score(result['score'])
                     except Exception as e:
                         result = {
                             'params': params_list[idx],
@@ -224,7 +283,7 @@ def bayesian_optimization(self, n_calls: int = 50, n_initial_points: int = 10,
             results_batch = [r[1] for r in results_batch]
         else:
             # Modo secuencial
-            results_batch = [evaluate_single(params) for params in params_list]
+            results_batch = [evaluate_single_sequential(params) for params in params_list]
 
         # Actualizar el optimizador con los resultados
         scores_for_optimizer = [r['safe_score'] for r in results_batch]
