@@ -84,12 +84,13 @@ print(f"Best Sharpe: {results.best_value:.4f}")
 
 ### Random Search
 
-Efficient random search.
+Efficient random search with parallel execution support.
 
 ```python
 results = optimizer.random_optimize(
     n_iterations=100,
     objective='sharpe_ratio',
+    n_jobs=4,    # Parallel evaluation with 4 workers
     seed=42
 )
 
@@ -97,18 +98,19 @@ print(f"Best parameters: {results.best_params}")
 print(f"Convergence: {results.convergence[-1]:.4f}")
 ```
 
-**Advantages**: Fast, scalable
+**Advantages**: Fast, scalable, parallel execution
 **Disadvantages**: No global optimum guarantee
 
 ### Bayesian Optimization
 
-Uses Gaussian Process for intelligent search.
+Uses Gaussian Process for intelligent search with parallel execution support.
 
 ```python
 results = optimizer.bayesian_optimize(
     n_iterations=50,
     objective='sharpe_ratio',
     n_initial_points=10,  # Initial exploration
+    n_jobs=4,             # Parallel evaluation with 4 workers
     acq_func='EI'         # Expected Improvement
 )
 
@@ -118,7 +120,7 @@ results = optimizer.bayesian_optimize(
 # 'LCB' - Lower Confidence Bound
 ```
 
-**Advantages**: Efficient, converges quickly
+**Advantages**: Efficient, converges quickly, parallel execution
 **Disadvantages**: More complex
 
 ### Genetic Algorithm
@@ -442,11 +444,16 @@ job_id = await manager.create_job(
 | Method | Description |
 |--------|-------------|
 | `add_parameter(name, type, min, max, step?, choices?)` | Add parameter |
-| `grid_optimize(objective, n_jobs?)` | Grid search |
-| `random_optimize(n_iterations, objective)` | Random search |
-| `bayesian_optimize(n_iterations, objective)` | Bayesian optimization |
+| `grid_optimize(objective, n_jobs?)` | Grid search (parallel) |
+| `random_optimize(n_iterations, objective, n_jobs?)` | Random search (parallel) |
+| `bayesian_optimize(n_iterations, objective, n_jobs?)` | Bayesian optimization (parallel) |
 | `genetic_optimize(pop_size, n_gen, objective)` | Genetic algorithm |
-| `walk_forward_optimize(n_splits, train_ratio)` | Walk-forward |
+| `walk_forward_optimize(n_splits, train_ratio, n_jobs?)` | Walk-forward (parallel) |
+
+**Note on Parallelization**: The `n_jobs` parameter controls parallel execution:
+- `n_jobs=1`: Sequential execution (default)
+- `n_jobs=4`: Use 4 parallel workers
+- `n_jobs=-1`: Use all available CPU cores
 
 ### OptimizationResult
 
@@ -487,6 +494,7 @@ job_id = await manager.create_job(
 5. **Use Constraints**: Enforce logical relationships between parameters
 6. **Limit Parameter Space**: Fewer parameters = less overfitting risk
 7. **Use Sufficient Data**: More data = more reliable results
+8. **Enable Parallelization**: Use `n_jobs=-1` or specify cores for faster optimization
 
 ## Tests
 

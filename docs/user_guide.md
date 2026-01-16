@@ -501,9 +501,11 @@ print(f"Total combinations: {len(results.all_results)}")
 
 ```python
 # Random search (useful for many parameters)
+# Supports parallel execution with n_jobs
 results = optimizer.random_optimize(
     n_iterations=100,
-    objective=objective
+    objective=objective,
+    n_jobs=4  # Use 4 parallel workers
 )
 
 print(f"Best parameters: {results.best_params}")
@@ -513,10 +515,12 @@ print(f"Best parameters: {results.best_params}")
 
 ```python
 # Intelligent optimization with Gaussian Process
+# Supports parallel execution with n_jobs
 results = optimizer.bayesian_optimize(
     n_iterations=50,
     objective=objective,
-    n_initial_points=10  # Initial random points
+    n_initial_points=10,  # Initial random points
+    n_jobs=4              # Use 4 parallel workers
 )
 
 print(f"Best parameters: {results.best_params}")

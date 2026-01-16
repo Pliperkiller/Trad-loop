@@ -467,13 +467,15 @@ indicators/
 
 ### 4.2 Optimizers Module
 
+All optimizers support parallel execution via `n_jobs` parameter using `ProcessPoolExecutor`.
+
 ```
 optimizers/
-├── grid_search.py             # Exhaustive search
-├── random_search.py           # Random search
-├── bayesian.py                # Bayesian optimization (GP)
+├── grid_search.py             # Exhaustive search (parallel)
+├── random_search.py           # Random search (parallel)
+├── bayesian.py                # Bayesian optimization (parallel)
 ├── genetic.py                 # Genetic algorithm
-├── walk_forward.py            # Walk-forward analysis
+├── walk_forward.py            # Walk-forward analysis (parallel)
 ├── optimization_types.py      # Types and configurations
 │
 ├── validation/                # Cross-validation
